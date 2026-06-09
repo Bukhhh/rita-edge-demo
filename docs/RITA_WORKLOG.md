@@ -1,0 +1,161 @@
+# RITA Worklog
+
+This note is for future Codex/RITA development continuity. Keep it updated when changing RITA-specific behavior.
+
+## Done
+
+- Added Python matplotlib chart generation support for agent-created PNG charts.
+- Added chart PDF report generation that embeds chart images into PDF outputs.
+- Added ECharts support for richer chart rendering in chat.
+- Added RITA capability registry in `system_settings` under `rita_capabilities`.
+- Added RITA feature toggles for:
+  - Auto Agent Mode
+  - Report Builder
+  - Chart Generator
+  - PDF Report Generator
+- Disabled Auto Agent Mode by default so normal chat does not keep switching into agent mode.
+- Removed or hid online/unwanted features from the user-facing UI:
+  - Community Hub from settings navigation
+  - online web search tools
+  - Gmail/Google Calendar/Outlook integrations
+  - browser extension/mobile connection settings
+  - File System Access, SQL Connector, Custom Skills, Agent Flows, MCP Servers in the chat tools menu
+  - unused LLM providers in selected UI areas, keeping Groq/Ollama-focused usage
+- Added local favicon upload support instead of requiring a favicon URL.
+- Added RITA chart PDF template settings:
+  - logo position
+  - show/hide logo
+  - show/hide page numbers
+  - footer text
+  - primary/accent color
+  - chart size
+- Moved RITA chart PDF template settings out of Branding & Whitelabeling.
+- Renamed the existing Agent Skills settings entry/page heading to RITA Skills.
+- Restored RITA Skills as a two-column skill list with the empty-state only in the right detail panel.
+- Added RITA Agents foundation:
+  - registry stored in `system_settings` under `rita_agents`
+  - default `RITA - Report Agent`
+  - default `RITA - Graph Agent`
+  - admin page at `/settings/rita-agents`
+  - capability toggles moved into `/settings/rita-agents`
+  - RITA chart PDF template editor moved into a `PDF Template Editor` modal on `RITA - Report Agent`
+  - removed the separate `/settings/rita-settings` UI entry
+  - chat plus-menu `RITA Agents` connector
+  - connected agent badge in the chat input
+  - `RITA - Report Agent` opens a guided Report Builder panel for normal users
+  - `RITA - Graph Agent` opens a guided Graph Builder panel and enforces one graph per request
+  - guided builder sends hidden internal prompts while showing a simple user-facing summary in chat
+  - backend receives selected RITA Agent id
+  - selected agent starts the existing agent runtime and injects agent-specific instructions
+  - selected agent narrows/ensures its mapped create-file tools
+- Hid model thinking/status details from normal users and managers:
+  - admin users can still view thought chains and detailed agent status
+  - normal users/managers see a simple RITA progress animation while waiting
+  - completed hidden thought text is removed from historical chat messages for non-admin users
+- Fixed RITA Agent chat connector usability:
+  - added close/disconnect `X` on the active Report/Graph Builder panel
+  - added close/disconnect `X` on the small connected agent badge
+  - disabled builder submit buttons while RITA is already generating a response
+- Fixed RITA Report/Graph Builder uploaded-document handling:
+  - auto-submitted builder prompts now carry the same current attachment context as normal chat
+  - builder submit buttons clearly wait while files are still being parsed/added as context
+  - builder prompts now explicitly tell RITA to use parsed file context and not ask the user to upload again when context exists
+- Updated RITA Report Builder focus options:
+  - renamed `Analyse` to `Report focus`
+  - changed default chips to business/report choices such as sales trend, top performing items, regional breakdown, category comparison, monthly summary, and anomalies/outliers
+- Updated RITA Report/Graph Builder behavior and chart choices:
+  - the builder form now hides after `Generate Report` or `Generate One Graph` while keeping the selected RITA Agent connected
+  - added more chart choices for report and graph workflows: horizontal bar, stacked bar, area, donut, histogram, and scatter
+  - expanded the chart PDF report tool to support additional chart types including stacked bar, area, histogram, and scatter
+- Updated RITA PDF branding:
+  - PDF Template Editor preview now renders the current instance/RITA logo instead of a placeholder block
+  - chart PDF reports now use the uploaded instance logo from storage instead of the bundled legacy logo
+- Rebranded Docker Compose labels from AnythingLLM to `rita-edge`:
+  - Compose project name
+  - service name
+  - container name
+  - network name
+- Added RITA Agent image assets and replaced old `RA` / `GA` text badges:
+  - `RITA - Report Agent`
+  - `RITA - Graph Agent`
+- Updated RITA Report Builder to support up to 3 selected chart types per report.
+- Added `Providers - Testing Only` in RITA Agents settings with a Groq testing-provider toggle.
+- Wired the Groq testing-provider toggle into system, workspace chat, and workspace agent provider selectors.
+- Allowed normal users to embed their own parsed chat uploads when context is too large, so uploaded data can still be processed by RITA.
+
+## Important Paths
+
+- Settings sidebar: `frontend/src/components/SettingsSidebar/index.jsx`
+- RITA Agents page: `frontend/src/pages/GeneralSettings/RitaAgents/index.jsx`
+- RITA Skills empty state: `frontend/src/pages/Admin/Agents/index.jsx`
+- RITA Agents chat menu: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/ToolsMenu/Tabs/RitaAgents/index.jsx`
+- RITA Agent chat badge: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/index.jsx`
+- RITA Report/Graph Builder panels: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/index.jsx`
+- Chat auto-submit attachment handling: `frontend/src/components/WorkspaceChat/ChatContainer/index.jsx`
+- RITA Agent image assets: `frontend/src/media/rita-agents/rita-report-agent.jpg`, `frontend/src/media/rita-agents/rita-graph-agent.jpg`
+- RITA Agent chat menu image display: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/ToolsMenu/Tabs/RitaAgents/index.jsx`
+- RITA Agent settings image display: `frontend/src/pages/GeneralSettings/RitaAgents/index.jsx`
+- RITA testing provider controls: `frontend/src/pages/GeneralSettings/RitaAgents/index.jsx`, `frontend/src/pages/GeneralSettings/LLMPreference/index.jsx`, `frontend/src/pages/WorkspaceSettings/ChatSettings/WorkspaceLLMSelection/index.jsx`, `frontend/src/pages/WorkspaceSettings/AgentConfig/AgentLLMSelection/index.jsx`
+- Parsed chat upload embed flow: `server/endpoints/workspacesParsedFiles.js`, `frontend/src/components/WorkspaceChat/ChatContainer/DnDWrapper/FileUploadWarningModal/index.jsx`, `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/AttachItem/ParsedFilesMenu/index.jsx`
+- RITA generated-file logo helper: `server/utils/agents/aibitat/plugins/create-files/lib.js`
+- RITA chart PDF chart types/logo: `server/utils/agents/aibitat/plugins/create-files/pdf/create-chart-pdf-report.js`
+- Docker Compose runtime label: `docker/docker-compose.yml`
+- RITA PDF template component: `frontend/src/pages/GeneralSettings/Settings/components/RitaPdfTemplate/index.jsx`
+- System settings model: `server/models/systemSettings.js`
+- Favicon upload/backend routes: `server/endpoints/system.js`
+- Favicon/logo file helpers: `server/utils/files/logo.js`
+- Browser meta/favicon generator: `server/utils/boot/MetaGenerator.js`
+- Chart PDF generator: `server/utils/agents/aibitat/plugins/create-files/pdf/create-chart-pdf-report.js`
+- Matplotlib chart tool: `server/utils/agents/aibitat/plugins/create-files/python/create-matplotlib-chart.js`
+- Chat selected-agent request path: `frontend/src/models/workspace.js`, `frontend/src/models/workspaceThread.js`, `server/endpoints/chat.js`
+- Runtime selected-agent handling: `server/utils/chats/agents.js`, `server/utils/agents/index.js`, `server/utils/agents/defaults.js`
+- Live assistant replies/thinking display: `frontend/src/components/WorkspaceChat/ChatContainer/ChatHistory/PromptReply/index.jsx`
+- Agent status/thinking display: `frontend/src/components/WorkspaceChat/ChatContainer/ChatHistory/StatusResponse/index.jsx`
+- Historical thought-chain display: `frontend/src/components/WorkspaceChat/ChatContainer/ChatHistory/HistoricalMessage/index.jsx`
+
+## Pending / Future Ideas
+
+- Add real monitoring metrics for RITA tools and RITA Agents:
+  - chart/PDF generation count
+  - tool success/failure count
+  - average generation time
+  - generated file storage size
+  - most-used RITA skills
+- Add editable/new custom RITA Agent creation once the default registry proves stable.
+- Store selected RITA Agent per workspace/thread instead of browser-wide local storage.
+- Add role-based access per RITA Agent.
+- Add per-agent model routing.
+- Add RITA Agent execution history:
+  - selected agent
+  - tools used
+  - success/failure
+  - generated files
+- Add audit log filters for RITA actions.
+- Add storage cleanup settings for generated files.
+- Add document extraction/OCR settings:
+  - normal parser
+  - OCR mode
+  - table-first extraction
+  - local vision model mode
+- Add model routing settings:
+  - chat model
+  - document/report model
+  - chart/report generation model
+- Add approval behavior settings:
+  - always ask
+  - auto-run trusted RITA tools
+  - ask only for risky tools
+- Add reusable report templates beyond the current chart PDF template.
+- Add local-only policy page that clearly shows which online features are blocked.
+
+## Notes
+
+- Current RITA Agents settings additions are lightweight and should not materially increase runtime size or RAM usage.
+- No new dependency was added for the latest RITA settings/sidebar/template move.
+- No new dependency was added for the RITA Agents foundation.
+- No new dependency was added for hiding thinking/status details from normal users and managers.
+- No new dependency was added for the RITA Agent connector close-button fix.
+- No new dependency was added for the RITA Builder uploaded-document context fix.
+- No new dependency was added for the RITA Agent image/logo/chart-choice update.
+- No new dependency was added for report max-3 charts, testing provider controls, or normal-user parsed-file embedding.
+- Rebuild Docker after frontend/backend changes to see them in the Docker-hosted app.

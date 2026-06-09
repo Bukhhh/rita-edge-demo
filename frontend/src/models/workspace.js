@@ -154,7 +154,13 @@ const Workspace = {
 
     await fetchEventSource(`${API_BASE}/workspace/${slug}/stream-chat`, {
       method: "POST",
-      body: JSON.stringify({ message, attachments }),
+      body: JSON.stringify({
+        message,
+        attachments,
+        selectedRitaAgentId: window.localStorage.getItem(
+          "rita_selected_agent_id"
+        ),
+      }),
       headers: baseHeaders(),
       signal: ctrl.signal,
       openWhenHidden: true,

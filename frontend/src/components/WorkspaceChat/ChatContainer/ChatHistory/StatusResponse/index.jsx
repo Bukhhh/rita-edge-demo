@@ -3,11 +3,19 @@ import { CaretDown } from "@phosphor-icons/react";
 
 import AgentAnimation from "@/media/animations/agent-animation.webm";
 import AgentStatic from "@/media/animations/agent-static.png";
+import useUser from "@/hooks/useUser";
 
 export default function StatusResponse({ messages = [], isThinking = false }) {
+  const { user } = useUser();
+  const isAdmin = !user?.role || user.role === "admin";
   const [isExpanded, setIsExpanded] = useState(false);
   const currentThought = messages[messages.length - 1];
   const previousThoughts = messages.slice(0, -1);
+
+  if (!isAdmin) {
+    if (!isThinking) return null;
+    return <RitaAgentProgressMessage />;
+  }
 
   function handleExpandClick() {
     if (!previousThoughts.length > 0) return;
@@ -92,6 +100,30 @@ export default function StatusResponse({ messages = [], isThinking = false }) {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RitaAgentProgressMessage() {
+  return (
+    <div className="flex justify-start w-full pr-4">
+      <div className="rounded-2xl bg-zinc-800 light:bg-slate-100 px-4 py-3 flex items-center gap-3 text-zinc-200 light:text-slate-700">
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="h-6 w-6 scale-[135%] light:invert light:opacity-60"
+        >
+          <source src={AgentAnimation} type="video/webm" />
+        </video>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium">RITA is working on it</span>
+          <span className="text-xs text-zinc-400 light:text-slate-500">
+            Preparing the result for you...
+          </span>
         </div>
       </div>
     </div>

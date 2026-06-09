@@ -269,7 +269,7 @@ class CreateFilesManager {
   }
 
   /**
-   * Gets the AnythingLLM logo for branding.
+   * Gets the bundled legacy logo for branding.
    * @param {Object} options
    * @param {boolean} [options.forDarkBackground=false] - True to get light logo (for dark backgrounds), false for dark logo (for light backgrounds)
    * @param {"buffer"|"dataUri"} [options.format="buffer"] - Return format: "buffer" for raw Buffer, "dataUri" for base64 data URI
@@ -293,6 +293,34 @@ class CreateFilesManager {
       return fsSync.readFileSync(path.join(assetsPath, filename));
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Gets the current uploaded instance logo for RITA-generated files.
+   * Falls back to the configured default logo when no custom logo exists.
+   * @param {Object} options
+   * @param {boolean} [options.forDarkBackground=false]
+   * @param {"buffer"|"dataUri"} [options.format="buffer"]
+   * @returns {Promise<Buffer|string|null>}
+   */
+  async getInstanceLogo({ forDarkBackground = false, format = "buffer" } = {}) {
+    try {
+      const {
+        determineLogoFilepath,
+        fetchLogo,
+        getDefaultFilename,
+      } = require("../../../../files/logo");
+      const logoPath = await determineLogoFilepath(
+        getDefaultFilename(forDarkBackground)
+      );
+      const logo = fetchLogo(logoPath);
+      if (!logo.found || !logo.buffer) return null;
+      if (format === "dataUri")
+        return `data:${logo.mime};base64,${logo.buffer.toString("base64")}`;
+      return logo.buffer;
+    } catch {
+      return this.getLogo({ forDarkBackground, format });
     }
   }
 }

@@ -12,7 +12,10 @@ const { USER_AGENT, WORKSPACE_AGENT } = require("./defaults");
 const ImportedPlugin = require("./imported");
 const { AgentFlows } = require("../agentFlows");
 const MCPCompatibilityLayer = require("../MCP");
-const { getAndClearInvocationAttachments } = require("../chats/agents");
+const {
+  getAndClearInvocationAttachments,
+  getAndClearInvocationRitaAgent,
+} = require("../chats/agents");
 const { DocumentManager } = require("../DocumentManager");
 
 class AgentHandler {
@@ -24,6 +27,7 @@ class AgentHandler {
   provider = null;
   model = null;
   attachments = [];
+  ritaAgent = null;
 
   constructor({ uuid }) {
     this.#invocationUUID = uuid;
@@ -55,6 +59,9 @@ class AgentHandler {
     if (this.#isAgentCommandInvocation({ message })) return true;
     if (chatMode === "automatic") {
       if (!workspace) return false;
+      const { SystemSettings } = require("../../models/systemSettings");
+      const ritaCapabilities = await SystemSettings.ritaCapabilities();
+      if (ritaCapabilities.agent_auto_mode !== true) return false;
       if (await Workspace.supportsNativeToolCalling(workspace)) return true;
       return false;
     }
@@ -623,15 +630,33 @@ class AgentHandler {
       this.provider,
       this.invocation.workspace,
       user,
-      this.invocation.prompt
+      this.invocation.prompt,
+      this.ritaAgent
     );
 
     this.aibitat.agent(USER_AGENT.name, userAgentDef);
     this.aibitat.agent(WORKSPACE_AGENT.name, workspaceAgentDef);
-    this.#funcsToLoad = [
+    this.#funcsToLoad = this.#filterFunctionsForRitaAgent([
       ...(userAgentDef?.functions || []),
       ...(workspaceAgentDef?.functions || []),
-    ];
+    ]);
+  }
+
+  #filterFunctionsForRitaAgent(functions = []) {
+    if (!this.ritaAgent?.tools?.length) return functions;
+    const allowedTools = new Set(this.ritaAgent.tools);
+    const filteredFunctions = functions.filter((fn) => {
+      if (typeof fn !== "string") return true;
+      if (!fn.startsWith("create-files-agent#")) return true;
+      const [, toolName] = fn.split("#");
+      return allowedTools.has(toolName);
+    });
+    for (const tool of allowedTools) {
+      const functionName = `create-files-agent#${tool}`;
+      if (!filteredFunctions.includes(functionName))
+        filteredFunctions.push(functionName);
+    }
+    return filteredFunctions;
   }
 
   async init() {
@@ -640,6 +665,7 @@ class AgentHandler {
 
     // Retrieve cached attachments (images, etc.) from the HTTP request
     this.attachments = getAndClearInvocationAttachments(this.#invocationUUID);
+    this.ritaAgent = getAndClearInvocationRitaAgent(this.#invocationUUID);
 
     return this;
   }

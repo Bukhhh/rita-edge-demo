@@ -149,6 +149,7 @@ export default {
       return "/settings/api-keys";
     },
     systemPromptVariables: () => "/settings/system-prompt-variables",
+    ritaAgents: () => "/settings/rita-agents",
     logs: () => {
       return "/settings/event-logs";
     },

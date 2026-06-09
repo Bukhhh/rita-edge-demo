@@ -71,8 +71,9 @@ function workspaceParsedFilesEndpoints(app) {
     "/workspace/:slug/embed-parsed-file/:fileId",
     [
       validatedRequest,
-      // Embed is still an admin/manager only feature
-      flexUserRoleValid([ROLES.admin, ROLES.manager]),
+      // RITA users need to embed their own parsed chat uploads when files exceed
+      // the context window, while broader document management remains restricted.
+      flexUserRoleValid([ROLES.all]),
       validWorkspaceSlug,
     ],
     async function (request, response) {

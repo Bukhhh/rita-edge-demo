@@ -338,6 +338,10 @@ function adminEndpoints(app) {
           "agent_sql_connections",
           "imported_agent_skills",
           "feature_flags",
+          "rita_capabilities",
+          "rita_agents",
+          "rita_pdf_template",
+          "rita_provider_controls",
           "meta_page_title",
           "meta_page_favicon",
         ];
@@ -350,6 +354,7 @@ function adminEndpoints(app) {
           "support_email",
           "meta_page_title",
           "meta_page_favicon",
+          "rita_pdf_template",
         ];
 
         for (const label of labels) {
@@ -425,6 +430,19 @@ function adminEndpoints(app) {
               requestedSettings[label] =
                 (await SystemSettings.getFeatureFlags()) || {};
               break;
+            case "rita_capabilities":
+              requestedSettings[label] = await SystemSettings.ritaCapabilities();
+              break;
+            case "rita_agents":
+              requestedSettings[label] = await SystemSettings.ritaAgents();
+              break;
+            case "rita_pdf_template":
+              requestedSettings[label] = await SystemSettings.ritaPdfTemplate();
+              break;
+            case "rita_provider_controls":
+              requestedSettings[label] =
+                await SystemSettings.ritaProviderControls();
+              break;
             case "meta_page_title":
               requestedSettings[label] =
                 await SystemSettings.getValueOrFallback({ label }, null);
@@ -470,6 +488,7 @@ function adminEndpoints(app) {
             "support_email",
             "meta_page_title",
             "meta_page_favicon",
+            "rita_pdf_template",
           ];
           const filteredUpdates = {};
           for (const key of Object.keys(updates)) {

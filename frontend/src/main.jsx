@@ -260,14 +260,12 @@ const router = createBrowserRouter([
         },
       },
       {
-        path: "/settings/browser-extension",
+        path: "/settings/rita-agents",
         lazy: async () => {
-          const { default: GeneralBrowserExtension } = await import(
-            "@/pages/GeneralSettings/BrowserExtensionApiKey"
+          const { default: RitaAgents } = await import(
+            "@/pages/GeneralSettings/RitaAgents"
           );
-          return {
-            element: <ManagerRoute Component={GeneralBrowserExtension} />,
-          };
+          return { element: <AdminRoute Component={RitaAgents} /> };
         },
       },
       {
@@ -323,46 +321,6 @@ const router = createBrowserRouter([
           return {
             element: <AdminRoute Component={LiveDocumentSyncManage} />,
           };
-        },
-      },
-      {
-        path: "/settings/community-hub/trending",
-        lazy: async () => {
-          const { default: CommunityHubTrending } = await import(
-            "@/pages/GeneralSettings/CommunityHub/Trending"
-          );
-          return { element: <AdminRoute Component={CommunityHubTrending} /> };
-        },
-      },
-      {
-        path: "/settings/community-hub/authentication",
-        lazy: async () => {
-          const { default: CommunityHubAuthentication } = await import(
-            "@/pages/GeneralSettings/CommunityHub/Authentication"
-          );
-          return {
-            element: <AdminRoute Component={CommunityHubAuthentication} />,
-          };
-        },
-      },
-      {
-        path: "/settings/community-hub/import-item",
-        lazy: async () => {
-          const { default: CommunityHubImportItem } = await import(
-            "@/pages/GeneralSettings/CommunityHub/ImportItem"
-          );
-          return {
-            element: <AdminRoute Component={CommunityHubImportItem} />,
-          };
-        },
-      },
-      {
-        path: "/settings/mobile-connections",
-        lazy: async () => {
-          const { default: MobileConnections } = await import(
-            "@/pages/GeneralSettings/MobileConnections"
-          );
-          return { element: <ManagerRoute Component={MobileConnections} /> };
         },
       },
       {

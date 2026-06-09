@@ -108,7 +108,13 @@ const WorkspaceThread = {
       `${API_BASE}/workspace/${workspaceSlug}/thread/${threadSlug}/stream-chat`,
       {
         method: "POST",
-        body: JSON.stringify({ message, attachments }),
+        body: JSON.stringify({
+          message,
+          attachments,
+          selectedRitaAgentId: window.localStorage.getItem(
+            "rita_selected_agent_id"
+          ),
+        }),
         headers: baseHeaders(),
         signal: ctrl.signal,
         openWhenHidden: true,

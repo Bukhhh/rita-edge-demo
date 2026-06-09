@@ -2,16 +2,23 @@ const AgentPlugins = require("./aibitat/plugins");
 const { SystemSettings } = require("../../models/systemSettings");
 const { safeJsonParse } = require("../http");
 const Provider = require("./aibitat/providers/ai-provider");
-const ImportedPlugin = require("./imported");
-const { AgentFlows } = require("../agentFlows");
-const MCPCompatibilityLayer = require("../MCP");
+
+const RITA_DISABLED_AGENT_SKILLS = new Set([
+  "web-scraping",
+  "web-browsing",
+  "filesystem-agent",
+  "sql-agent",
+  "gmail-agent",
+  "google-calendar-agent",
+  "outlook-agent",
+]);
 
 // This is a list of skills that are built-in and default enabled.
 const DEFAULT_SKILLS = [
   AgentPlugins.memory.name,
   AgentPlugins.docSummarizer.name,
   AgentPlugins.webScraping.name,
-];
+].filter((skill) => !RITA_DISABLED_AGENT_SKILLS.has(skill));
 
 /**
  * Configuration for agent skills that require availability checks and disabled sub-skill lists.
@@ -64,22 +71,23 @@ const WORKSPACE_AGENT = {
     provider = null,
     workspace = null,
     user = null,
-    prompt = ""
+    prompt = "",
+    ritaAgent = null
   ) => {
-    const role = await Provider.systemPrompt({
+    let role = await Provider.systemPrompt({
       provider,
       workspace,
       user,
       prompt,
     });
+    if (ritaAgent?.instructions) {
+      role = `${role}\n\n<RITA_AGENT_PROFILE>\nName: ${ritaAgent.name}\nDescription: ${ritaAgent.description}\nDefault output: ${ritaAgent.default_output}\nInstructions: ${ritaAgent.instructions}\n</RITA_AGENT_PROFILE>`;
+    }
 
     return {
       role,
       functions: [
         ...(await agentSkillsFromSystemSettings()),
-        ...ImportedPlugin.activeImportedPlugins(),
-        ...AgentFlows.activeFlowPlugins(),
-        ...(await new MCPCompatibilityLayer().activeMCPServers()),
       ],
     };
   },
@@ -102,6 +110,7 @@ async function agentSkillsFromSystemSettings() {
     []
   );
   DEFAULT_SKILLS.forEach((skill) => {
+    if (RITA_DISABLED_AGENT_SKILLS.has(skill)) return;
     if (!_disabledDefaultSkills.includes(skill))
       systemFunctions.push(AgentPlugins[skill].name);
   });
@@ -133,6 +142,7 @@ async function agentSkillsFromSystemSettings() {
   }
 
   for (const skillName of _setting) {
+    if (RITA_DISABLED_AGENT_SKILLS.has(skillName)) continue;
     if (!AgentPlugins.hasOwnProperty(skillName)) continue;
 
     // This is a plugin module with many sub-children plugins who

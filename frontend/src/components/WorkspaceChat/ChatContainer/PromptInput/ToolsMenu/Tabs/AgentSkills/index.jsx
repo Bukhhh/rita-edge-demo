@@ -12,7 +12,7 @@ import useAgentSkillsState from "./useAgentSkillsState";
 import useSkillSections from "./useSkillSections";
 import SkillRow from "./SkillRow";
 import SkillSection from "./SkillSection";
-import { Wrench, MagnifyingGlass, CircleNotch } from "@phosphor-icons/react";
+import { Wrench, MagnifyingGlass } from "@phosphor-icons/react";
 import { useIsAgentSessionActive } from "@/utils/chat/agent";
 
 const MIN_ITEMS_TO_SHOW_SEARCH = 10;
@@ -32,25 +32,21 @@ export default function AgentSkillsTab({
 
   // All skill state management
   const {
-    fileSystemAgentAvailable,
-    importedSkills,
-    flows,
-    mcpServers,
     loading,
-    mcpLoading,
     isSkillEnabled,
     toggleSkill,
-    toggleImportedSkill,
-    toggleFlow,
-    toggleMcpTool,
     isSubSkillEnabled,
     toggleSubSkill,
     disabledSubSkills,
   } = useAgentSkillsState(defaultSkills);
 
-  const configurableSkills = getConfigurableSkills(t, {
-    fileSystemAgentAvailable,
-  });
+  const configurableSkills = Object.fromEntries(
+    Object.entries(
+      getConfigurableSkills(t, {
+        fileSystemAgentAvailable: false,
+      })
+    ).filter(([key]) => ["create-files-agent", "create-chart"].includes(key))
+  );
 
   // UI state
   const [expandedSections, setExpandedSections] = useState({});
@@ -65,16 +61,13 @@ export default function AgentSkillsTab({
     defaultSkills,
     configurableSkills,
     appIntegrationSkills,
-    importedSkills,
-    flows,
-    mcpServers,
+    importedSkills: [],
+    flows: [],
+    mcpServers: [],
     isSkillEnabled,
     toggleSkill,
     isSubSkillEnabled,
     toggleSubSkill,
-    toggleImportedSkill,
-    toggleFlow,
-    toggleMcpTool,
     disabledSubSkills,
   });
 
@@ -239,19 +232,7 @@ export default function AgentSkillsTab({
           ))}
         </SkillSection>
       ))}
-      {mcpLoading && (
-        <div className="flex items-center gap-1.5 px-2 py-1.5">
-          <CircleNotch
-            size={12}
-            className="text-zinc-500 light:text-slate-400 animate-spin"
-            weight="bold"
-          />
-          <span className="text-[10px] text-zinc-500 light:text-slate-400">
-            {t("chat_window.loading_mcp_servers")}
-          </span>
-        </div>
-      )}
-      {filteredSections.length === 0 && !mcpLoading && searchQuery.trim() && (
+      {filteredSections.length === 0 && searchQuery.trim() && (
         <p className="text-xs text-zinc-500 light:text-slate-400 text-center py-2">
           {t("chat_window.no_tools_found")}
         </p>

@@ -6,6 +6,7 @@ const { SystemSettings } = require("../../models/systemSettings");
 const { normalizePath, isWithin } = require(".");
 const LOGO_FILENAME = "anything-llm.png";
 const LOGO_FILENAME_DARK = "anything-llm-dark.png";
+const FAVICON_FALLBACK = "favicon.png";
 
 /**
  * Checks if the filename is the default logo filename for dark or light mode.
@@ -50,6 +51,22 @@ async function determineLogoFilepath(defaultFilename = LOGO_FILENAME) {
   return defaultFilepath;
 }
 
+async function determineFaviconFilepath() {
+  const faviconSetting = await SystemSettings.get({ label: "favicon_filename" });
+  const currentFaviconFilename = faviconSetting?.value;
+  const basePath = process.env.STORAGE_DIR
+    ? path.join(process.env.STORAGE_DIR, "assets")
+    : path.join(__dirname, "../../storage/assets");
+
+  if (!currentFaviconFilename || !validFilename(currentFaviconFilename))
+    return null;
+
+  const faviconPath = path.join(basePath, normalizePath(currentFaviconFilename));
+  if (!isWithin(path.resolve(basePath), path.resolve(faviconPath)))
+    return null;
+  return fs.existsSync(faviconPath) ? faviconPath : null;
+}
+
 function fetchLogo(logoPath) {
   if (!fs.existsSync(logoPath)) {
     return {
@@ -92,6 +109,27 @@ async function renameLogoFile(originalFilename = null) {
   return newFilename;
 }
 
+async function renameFaviconFile(originalFilename = null) {
+  const extname = path.extname(originalFilename) || ".png";
+  const newFilename = `${v4()}${extname}`;
+  const assetsDirectory = process.env.STORAGE_DIR
+    ? path.join(process.env.STORAGE_DIR, "assets")
+    : path.join(__dirname, `../../storage/assets`);
+  const originalFilepath = path.join(
+    assetsDirectory,
+    normalizePath(originalFilename)
+  );
+  if (!isWithin(path.resolve(assetsDirectory), path.resolve(originalFilepath)))
+    throw new Error("Invalid file path.");
+
+  const outputFilepath = path.join(
+    assetsDirectory,
+    normalizePath(newFilename)
+  );
+  fs.renameSync(originalFilepath, outputFilepath);
+  return newFilename;
+}
+
 async function removeCustomLogo(logoFilename = LOGO_FILENAME) {
   if (!logoFilename || !validFilename(logoFilename)) return false;
   const assetsDirectory = process.env.STORAGE_DIR
@@ -105,13 +143,30 @@ async function removeCustomLogo(logoFilename = LOGO_FILENAME) {
   return true;
 }
 
+async function removeCustomFavicon(faviconFilename = null) {
+  if (!faviconFilename || !validFilename(faviconFilename)) return false;
+  const assetsDirectory = process.env.STORAGE_DIR
+    ? path.join(process.env.STORAGE_DIR, "assets")
+    : path.join(__dirname, `../../storage/assets`);
+
+  const faviconPath = path.join(assetsDirectory, normalizePath(faviconFilename));
+  if (!isWithin(path.resolve(assetsDirectory), path.resolve(faviconPath)))
+    throw new Error("Invalid file path.");
+  if (fs.existsSync(faviconPath)) fs.unlinkSync(faviconPath);
+  return true;
+}
+
 module.exports = {
   fetchLogo,
   renameLogoFile,
+  renameFaviconFile,
   removeCustomLogo,
+  removeCustomFavicon,
   validFilename,
   getDefaultFilename,
   determineLogoFilepath,
+  determineFaviconFilepath,
   isDefaultFilename,
   LOGO_FILENAME,
+  FAVICON_FALLBACK,
 };

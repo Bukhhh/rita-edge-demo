@@ -189,6 +189,8 @@ class MetaGenerator {
 
   #validUrl(faviconUrl = null) {
     if (faviconUrl === null) return "/favicon.png";
+    if (String(faviconUrl).startsWith("/api/system/favicon"))
+      return String(faviconUrl);
     try {
       const url = new URL(faviconUrl);
       return url.toString();
@@ -340,8 +342,12 @@ class MetaGenerator {
       let iconUrl = "/favicon.png";
       if (faviconURL) {
         try {
-          new URL(faviconURL);
-          iconUrl = faviconURL;
+          if (String(faviconURL).startsWith("/api/system/favicon")) {
+            iconUrl = faviconURL;
+          } else {
+            new URL(faviconURL);
+            iconUrl = faviconURL;
+          }
         } catch {
           iconUrl = "/favicon.png";
         }

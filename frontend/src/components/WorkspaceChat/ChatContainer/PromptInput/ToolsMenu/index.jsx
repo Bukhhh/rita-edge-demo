@@ -8,11 +8,14 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import useUser from "@/hooks/useUser";
+import System from "@/models/system";
 import AgentSkillsTab from "./Tabs/AgentSkills";
+import ReportBuilderTab from "./Tabs/ReportBuilder";
+import RitaAgentsTab from "./Tabs/RitaAgents";
 import SlashCommandsTab from "./Tabs/SlashCommands";
 
 export const TOOLS_MENU_KEYBOARD_EVENT = "tools-menu-keyboard";
-function getTabs(t, user) {
+function getTabs(t, user, capabilities = {}) {
   const tabs = [
     {
       key: "slash-commands",
@@ -20,6 +23,20 @@ function getTabs(t, user) {
       component: SlashCommandsTab,
     },
   ];
+
+  if (capabilities?.report_builder !== false) {
+    tabs.push({
+      key: "report-builder",
+      label: "Report Builder",
+      component: ReportBuilderTab,
+    });
+  }
+
+  tabs.push({
+    key: "rita-agents",
+    label: "RITA Agents",
+    component: RitaAgentsTab,
+  });
 
   // Only show agent skills tab for admins or when multiuser mode is off
   const canSeeAgentSkills =
@@ -54,7 +71,11 @@ export default function ToolsMenu({
 }) {
   const { t } = useTranslation();
   const { user } = useUser();
-  const TABS = useMemo(() => getTabs(t, user), [t, user]);
+  const [capabilities, setCapabilities] = useState({});
+  const TABS = useMemo(
+    () => getTabs(t, user, capabilities),
+    [t, user, capabilities]
+  );
   const [activeTab, setActiveTab] = useState(TABS[0].key);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [maxHeight, setMaxHeight] = useState(360);
@@ -65,6 +86,24 @@ export default function ToolsMenu({
   useEffect(() => {
     if (showing) setActiveTab(TABS[0].key);
   }, [showing]);
+
+  useEffect(() => {
+    if (!showing) return;
+    let mounted = true;
+    System.keys().then((settings) => {
+      if (!mounted) return;
+      setCapabilities(settings?.RitaCapabilities ?? {});
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [showing]);
+
+  useEffect(() => {
+    if (!TABS.some((tab) => tab.key === activeTab)) {
+      setActiveTab(TABS[0].key);
+    }
+  }, [TABS, activeTab]);
 
   // Reset highlight when switching tabs or closing
   useEffect(() => {
@@ -150,6 +189,12 @@ export default function ToolsMenu({
         onMouseDown={(e) => {
           // Prevents prompt textarea from losing focus when clicking inside the menu.
           // Skip for portaled modals so their inputs can still receive focus.
+          if (
+            e.target.closest(
+              "input, textarea, select, [contenteditable='true']"
+            )
+          )
+            return;
           if (e.currentTarget.contains(e.target)) e.preventDefault();
         }}
         style={{ maxHeight }}

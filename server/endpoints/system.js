@@ -25,9 +25,12 @@ const {
   fetchLogo,
   validFilename,
   renameLogoFile,
+  renameFaviconFile,
   removeCustomLogo,
+  removeCustomFavicon,
   LOGO_FILENAME,
   isDefaultFilename,
+  determineFaviconFilepath,
 } = require("../utils/files/logo");
 const { Telemetry } = require("../models/telemetry");
 const { ApiKey } = require("../models/apiKeys");
@@ -694,6 +697,31 @@ function systemEndpoints(app) {
     }
   });
 
+  app.get("/system/favicon", async function (_, response) {
+    try {
+      const faviconPath = await determineFaviconFilepath();
+      if (!faviconPath) return response.sendStatus(204).end();
+
+      const { found, buffer, size, mime } = fetchLogo(faviconPath);
+      if (!found) return response.sendStatus(204).end();
+
+      response.writeHead(200, {
+        "Access-Control-Expose-Headers":
+          "Content-Disposition,Content-Type,Content-Length",
+        "Content-Type": mime || "image/png",
+        "Content-Disposition": `attachment; filename=${path.basename(
+          faviconPath
+        )}`,
+        "Content-Length": size,
+      });
+      response.end(Buffer.from(buffer, "base64"));
+      return;
+    } catch (error) {
+      console.error("Error processing the favicon request:", error);
+      response.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/system/footer-data", [validatedRequest], async (_, response) => {
     try {
       const footerData =
@@ -932,6 +960,50 @@ function systemEndpoints(app) {
     }
   );
 
+  app.post(
+    "/system/upload-favicon",
+    [
+      validatedRequest,
+      flexUserRoleValid([ROLES.admin, ROLES.manager]),
+      handleAssetUpload,
+    ],
+    async (request, response) => {
+      if (!request?.file || !request?.file.originalname) {
+        return response
+          .status(400)
+          .json({ message: "No favicon file provided." });
+      }
+
+      if (!validFilename(request.file.originalname)) {
+        return response.status(400).json({
+          message: "Invalid file name. Please choose a different file.",
+        });
+      }
+
+      try {
+        const newFilename = await renameFaviconFile(request.file.originalname);
+        const existingFaviconFilename = (
+          await SystemSettings.get({ label: "favicon_filename" })
+        )?.value;
+        await removeCustomFavicon(existingFaviconFilename);
+
+        const { success, error } = await SystemSettings._updateSettings({
+          favicon_filename: newFilename,
+          meta_page_favicon: "/api/system/favicon",
+        });
+
+        return response.status(success ? 200 : 500).json({
+          message: success
+            ? "Favicon uploaded successfully."
+            : error || "Failed to update with new favicon.",
+        });
+      } catch (error) {
+        console.error("Error processing the favicon upload:", error);
+        response.status(500).json({ message: "Error uploading the favicon." });
+      }
+    }
+  );
+
   app.get("/system/is-default-logo", async (_, response) => {
     try {
       const currentLogoFilename = await SystemSettings.currentLogoFilename();
@@ -940,6 +1012,20 @@ function systemEndpoints(app) {
       response.status(200).json({ isDefaultLogo });
     } catch (error) {
       console.error("Error processing the logo request:", error);
+      response.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/system/is-default-favicon", async (_, response) => {
+    try {
+      const currentFaviconFilename = (
+        await SystemSettings.get({ label: "favicon_filename" })
+      )?.value;
+      response
+        .status(200)
+        .json({ isDefaultFavicon: !currentFaviconFilename });
+    } catch (error) {
+      console.error("Error processing the favicon request:", error);
       response.status(500).json({ message: "Internal server error" });
     }
   });
@@ -963,6 +1049,33 @@ function systemEndpoints(app) {
       } catch (error) {
         console.error("Error processing the logo removal:", error);
         response.status(500).json({ message: "Error removing the logo." });
+      }
+    }
+  );
+
+  app.get(
+    "/system/remove-favicon",
+    [validatedRequest, flexUserRoleValid([ROLES.admin, ROLES.manager])],
+    async (_request, response) => {
+      try {
+        const currentFaviconFilename = (
+          await SystemSettings.get({ label: "favicon_filename" })
+        )?.value;
+        await removeCustomFavicon(currentFaviconFilename);
+
+        const { success, error } = await SystemSettings._updateSettings({
+          favicon_filename: null,
+          meta_page_favicon: null,
+        });
+
+        return response.status(success ? 200 : 500).json({
+          message: success
+            ? "Favicon removed successfully."
+            : error || "Failed to remove favicon.",
+        });
+      } catch (error) {
+        console.error("Error processing the favicon removal:", error);
+        response.status(500).json({ message: "Error removing the favicon." });
       }
     }
   );

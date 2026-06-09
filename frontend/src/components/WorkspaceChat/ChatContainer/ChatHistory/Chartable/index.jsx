@@ -1,481 +1,406 @@
 import { v4 } from "uuid";
-import {
-  AreaChart,
-  BarChart,
-  DonutChart,
-  Legend,
-  LineChart,
-} from "@tremor/react";
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Funnel,
-  FunnelChart,
-  Line,
-  PolarAngleAxis,
-  PolarGrid,
-  PolarRadiusAxis,
-  Radar,
-  RadarChart,
-  RadialBar,
-  RadialBarChart,
-  Scatter,
-  ScatterChart,
-  Treemap,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { Colors, getTremorColor } from "./chart-utils.js";
-import CustomCell from "./CustomCell.jsx";
-import Tooltip from "./CustomTooltip.jsx";
+import * as echarts from "echarts";
 import { safeJsonParse } from "@/utils/request.js";
 import renderMarkdown from "@/utils/chat/markdown.js";
 import DOMPurify from "dompurify";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { saveAs } from "file-saver";
-import { useGenerateImage } from "recharts-to-png";
 import { CircleNotch, DownloadSimple } from "@phosphor-icons/react";
 
-const dataFormatter = (number) => {
-  return Intl.NumberFormat("us").format(number).toString();
-};
+const chartPalette = [
+  "#3b82f6",
+  "#14b8a6",
+  "#f59e0b",
+  "#f43f5e",
+  "#8b5cf6",
+  "#06b6d4",
+  "#22c55e",
+  "#ef4444",
+  "#6366f1",
+  "#d946ef",
+];
 
-export function Chartable({ props }) {
-  const [getDivJpeg, { ref }] = useGenerateImage({
-    quality: 1,
-    type: "image/jpeg",
-    options: {
-      backgroundColor: "#393d43",
-      padding: 20,
+function formatNumber(value) {
+  if (typeof value !== "number") return value;
+  return Intl.NumberFormat("en", {
+    maximumFractionDigits: value % 1 === 0 ? 0 : 2,
+  }).format(value);
+}
+
+function parseContent(content) {
+  if (typeof content === "string") return safeJsonParse(content, null);
+  return content ?? null;
+}
+
+function parseOption(content) {
+  const option =
+    content?.option ?? content?.echartsOption ?? content?.chartSpec;
+  if (!option) return null;
+  if (typeof option === "string") return safeJsonParse(option, null);
+  if (typeof option === "object") return option;
+  return null;
+}
+
+function parseDataset(content) {
+  const dataset = content?.dataset ?? content?.data ?? [];
+  if (typeof dataset === "string") return safeJsonParse(dataset, []);
+  return Array.isArray(dataset) ? dataset : [];
+}
+
+function pickMetricKeys(data) {
+  if (!data.length) return [];
+  return Object.keys(data[0]).filter((key) => key !== "name");
+}
+
+function chartThemeColors() {
+  const isLight =
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute("data-theme") === "light";
+  return isLight
+    ? {
+        heading: "#111827",
+        text: "#374151",
+        muted: "#6b7280",
+        axis: "#d1d5db",
+        split: "#e5e7eb",
+        tooltipBg: "#ffffff",
+        tooltipBorder: "#d1d5db",
+      }
+    : {
+        heading: "#f8fafc",
+        text: "#e5e7eb",
+        muted: "#cbd5e1",
+        axis: "#64748b",
+        split: "#334155",
+        tooltipBg: "#111827",
+        tooltipBorder: "#475569",
+      };
+}
+
+function normalizeAxis(axis, theme) {
+  if (!axis) return axis;
+  const axes = Array.isArray(axis) ? axis : [axis];
+  const normalized = axes.map((axisConfig) => ({
+    ...axisConfig,
+    axisLabel: {
+      color: theme.muted,
+      ...(axisConfig.axisLabel || {}),
     },
-  });
-  const handleDownload = useCallback(async () => {
-    const jpeg = await getDivJpeg();
-    if (jpeg) saveAs(jpeg, `chart-${v4().split("-")[0]}.jpg`);
-  }, []);
+    axisLine: {
+      lineStyle: { color: theme.axis },
+      ...(axisConfig.axisLine || {}),
+    },
+    splitLine: {
+      lineStyle: { color: theme.split, type: "dashed" },
+      ...(axisConfig.splitLine || {}),
+    },
+  }));
+  return Array.isArray(axis) ? normalized : normalized[0];
+}
 
-  const color = null;
-  const showLegend = true;
-  const content =
-    typeof props.content === "string"
-      ? safeJsonParse(props.content, null)
-      : props.content;
-  if (content === null) return null;
-
+function legacyContentToOption(content) {
   const chartType = content?.type?.toLowerCase();
-  const data =
-    typeof content.dataset === "string"
-      ? safeJsonParse(content.dataset, [])
-      : content.dataset;
-  const value = data.length > 0 ? Object.keys(data[0])[1] : "value";
-  const title = content?.title;
+  const title = content?.title || "Generated chart";
+  const data = parseDataset(content);
+  const metricKeys = pickMetricKeys(data);
+  const primaryMetric = metricKeys[0] || "value";
+  const hasManyRows = data.length > 18;
+  const categoryLabels = data.map(
+    (row, index) => row.name ?? `Item ${index + 1}`
+  );
 
-  const renderChart = () => {
-    switch (chartType) {
-      case "area":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            <AreaChart
-              className="h-[350px]"
-              data={data}
-              index="name"
-              categories={[value]}
-              colors={[color || "blue", "cyan"]}
-              showLegend={showLegend}
-              valueFormatter={dataFormatter}
-            />
-          </div>
-        );
-      case "bar":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            <BarChart
-              className="h-[350px]"
-              data={data}
-              index="name"
-              categories={[value]}
-              colors={[color || "blue"]}
-              showLegend={showLegend}
-              valueFormatter={dataFormatter}
-              layout={"vertical"}
-              yAxisWidth={100}
-            />
-          </div>
-        );
-      case "line":
-        return (
-          <div className="bg-theme-bg-primary p-8 pb-12 rounded-xl text-white h-[500px] w-full light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            <LineChart
-              className="h-[400px]"
-              data={data}
-              index="name"
-              categories={[value]}
-              colors={[color || "blue"]}
-              showLegend={showLegend}
-              valueFormatter={dataFormatter}
-            />
-          </div>
-        );
-      case "composed":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            {showLegend && (
-              <Legend
-                categories={[value]}
-                colors={[color || "blue", color || "blue"]}
-                className="mb-5 justify-end"
-              />
-            )}
-            <ComposedChart width={500} height={260} data={data}>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                horizontal
-                vertical={false}
-              />
-              <XAxis
-                dataKey="name"
-                tickLine={false}
-                axisLine={false}
-                interval="preserveStartEnd"
-                tick={{ transform: "translate(0, 6)", fill: "white" }}
-                style={{
-                  fontSize: "12px",
-                  fontFamily: "Inter; Helvetica",
-                }}
-                padding={{ left: 10, right: 10 }}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                type="number"
-                tick={{ transform: "translate(-3, 0)", fill: "white" }}
-                style={{
-                  fontSize: "12px",
-                  fontFamily: "Inter; Helvetica",
-                }}
-              />
-              <Tooltip legendColor={getTremorColor(color || "blue")} />
-              <Line
-                type="linear"
-                dataKey={value}
-                stroke={getTremorColor(color || "blue")}
-                dot={false}
-                strokeWidth={2}
-              />
-              <Bar
-                dataKey="value"
-                name="value"
-                type="linear"
-                fill={getTremorColor(color || "blue")}
-              />
-            </ComposedChart>
-          </div>
-        );
-      case "scatter":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            {showLegend && (
-              <div className="flex justify-end">
-                <Legend
-                  categories={[value]}
-                  colors={[color || "blue", color || "blue"]}
-                  className="mb-5"
-                />
-              </div>
-            )}
-            <ScatterChart width={500} height={260} data={data}>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                horizontal
-                vertical={false}
-              />
-              <XAxis
-                dataKey="name"
-                tickLine={false}
-                axisLine={false}
-                interval="preserveStartEnd"
-                tick={{ transform: "translate(0, 6)", fill: "white" }}
-                style={{
-                  fontSize: "12px",
-                  fontFamily: "Inter; Helvetica",
-                }}
-                padding={{ left: 10, right: 10 }}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                type="number"
-                tick={{ transform: "translate(-3, 0)", fill: "white" }}
-                style={{
-                  fontSize: "12px",
-                  fontFamily: "Inter; Helvetica",
-                }}
-              />
-              <Tooltip legendColor={getTremorColor(color || "blue")} />
-              <Scatter dataKey={value} fill={getTremorColor(color || "blue")} />
-            </ScatterChart>
-          </div>
-        );
-      case "pie":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            <DonutChart
-              data={data}
-              category={value}
-              index="name"
-              colors={[
-                color || "cyan",
-                "violet",
-                "rose",
-                "amber",
-                "emerald",
-                "teal",
-                "fuchsia",
-              ]}
-              // No actual legend for pie chart, but this will toggle the central text
-              showLabel={showLegend}
-              valueFormatter={dataFormatter}
-              customTooltip={customTooltip}
-            />
-          </div>
-        );
-      case "radar":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            {showLegend && (
-              <div className="flex justify-end">
-                <Legend
-                  categories={[value]}
-                  colors={[color || "blue", color || "blue"]}
-                  className="mb-5"
-                />
-              </div>
-            )}
-            <RadarChart
-              cx={300}
-              cy={250}
-              outerRadius={150}
-              width={600}
-              height={500}
-              data={data}
-            >
-              <PolarGrid />
-              <PolarAngleAxis dataKey="name" tick={{ fill: "white" }} />
-              <PolarRadiusAxis tick={{ fill: "white" }} />
-              <Tooltip legendColor={getTremorColor(color || "blue")} />
-              <Radar
-                dataKey="value"
-                stroke={getTremorColor(color || "blue")}
-                fill={getTremorColor(color || "blue")}
-                fillOpacity={0.6}
-              />
-            </RadarChart>
-          </div>
-        );
-      case "radialbar":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            {showLegend && (
-              <div className="flex justify-end">
-                <Legend
-                  categories={[value]}
-                  colors={[color || "blue", color || "blue"]}
-                  className="mb-5"
-                />
-              </div>
-            )}
-            <RadialBarChart
-              width={500}
-              height={300}
-              cx={150}
-              cy={150}
-              innerRadius={20}
-              outerRadius={140}
-              barSize={10}
-              data={data}
-            >
-              <RadialBar
-                angleAxisId={15}
-                label={{
-                  position: "insideStart",
-                  fill: getTremorColor(color || "blue"),
-                }}
-                dataKey="value"
-              />
-              <Tooltip legendColor={getTremorColor(color || "blue")} />
-            </RadialBarChart>
-          </div>
-        );
-      case "treemap":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            {showLegend && (
-              <div className="flex justify-end">
-                <Legend
-                  categories={[value]}
-                  colors={[color || "blue", color || "blue"]}
-                  className="mb-5"
-                />
-              </div>
-            )}
-            <Treemap
-              width={500}
-              height={260}
-              data={data}
-              dataKey="value"
-              stroke="#fff"
-              fill={getTremorColor(color || "blue")}
-              content={<CustomCell colors={Object.values(Colors)} />}
-            >
-              <Tooltip legendColor={getTremorColor(color || "blue")} />
-            </Treemap>
-          </div>
-        );
-      case "funnel":
-        return (
-          <div className="bg-theme-bg-primary p-8 rounded-xl text-white light:border light:border-theme-border-primary">
-            <h3 className="text-lg text-theme-text-primary font-medium">
-              {title}
-            </h3>
-            {showLegend && (
-              <div className="flex justify-end">
-                <Legend
-                  categories={[value]}
-                  colors={[color || "blue", color || "blue"]}
-                  className="mb-5"
-                />
-              </div>
-            )}
-            <FunnelChart width={500} height={300} data={data}>
-              <Tooltip legendColor={getTremorColor(color || "blue")} />
-              <Funnel dataKey="value" color={getTremorColor(color || "blue")} />
-            </FunnelChart>
-          </div>
-        );
-      default:
-        return <p>Unsupported chart type.</p>;
-    }
+  const baseCartesian = {
+    title: { text: title },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: chartType === "bar" ? "shadow" : "line" },
+    },
+    legend: { top: 34, type: "scroll" },
+    grid: { top: 86, right: 36, bottom: hasManyRows ? 88 : 56, left: 64 },
+    xAxis: {
+      type: "category",
+      data: categoryLabels,
+      axisLabel: {
+        interval: 0,
+        rotate: hasManyRows ? 35 : 0,
+        overflow: "truncate",
+        width: 96,
+      },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { formatter: formatNumber },
+      splitLine: { lineStyle: { type: "dashed" } },
+    },
+    dataZoom: hasManyRows
+      ? [{ type: "slider", height: 24, bottom: 24 }, { type: "inside" }]
+      : [],
   };
 
-  if (!!props.chatId) {
-    return (
-      <div className="flex justify-start w-full">
-        <div className="py-2 px-4 w-full flex flex-col md:max-w-[80%]">
-          <div className="relative w-full">
-            <DownloadGraph onClick={handleDownload} />
-            <div ref={ref}>{renderChart()}</div>
+  if (chartType === "pie") {
+    return {
+      title: { text: title },
+      tooltip: { trigger: "item" },
+      legend: { top: 34, type: "scroll" },
+      series: [
+        {
+          name: primaryMetric,
+          type: "pie",
+          radius: ["42%", "70%"],
+          center: ["50%", "58%"],
+          avoidLabelOverlap: true,
+          data: data.map((row) => ({
+            name: row.name,
+            value: Number(row[primaryMetric]) || 0,
+          })),
+          label: { formatter: "{b}: {d}%" },
+        },
+      ],
+    };
+  }
+
+  if (chartType === "radar") {
+    const max = Math.max(
+      ...data.map((row) => Number(row[primaryMetric]) || 0),
+      1
+    );
+    return {
+      title: { text: title },
+      tooltip: { trigger: "item" },
+      radar: {
+        radius: "62%",
+        indicator: data.map((row) => ({
+          name: row.name,
+          max: Math.ceil(max * 1.2),
+        })),
+      },
+      series: [
+        {
+          name: primaryMetric,
+          type: "radar",
+          areaStyle: { opacity: 0.18 },
+          data: [
+            {
+              value: data.map((row) => Number(row[primaryMetric]) || 0),
+              name: primaryMetric,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  if (chartType === "treemap") {
+    return {
+      title: { text: title },
+      tooltip: { trigger: "item" },
+      series: [
+        {
+          type: "treemap",
+          roam: true,
+          breadcrumb: { show: false },
+          data: data.map((row) => ({
+            name: row.name,
+            value: Number(row[primaryMetric]) || 0,
+          })),
+        },
+      ],
+    };
+  }
+
+  if (chartType === "funnel") {
+    return {
+      title: { text: title },
+      tooltip: { trigger: "item" },
+      legend: { top: 34, type: "scroll" },
+      series: [
+        {
+          name: primaryMetric,
+          type: "funnel",
+          top: 82,
+          bottom: 20,
+          width: "72%",
+          left: "14%",
+          data: data.map((row) => ({
+            name: row.name,
+            value: Number(row[primaryMetric]) || 0,
+          })),
+        },
+      ],
+    };
+  }
+
+  if (chartType === "scatter") {
+    const xKey = metricKeys[0];
+    const yKey = metricKeys[1] || metricKeys[0];
+    return {
+      title: { text: title },
+      tooltip: {
+        trigger: "item",
+        formatter: ({ data: point }) =>
+          `${point?.[2] ?? "Point"}<br/>${xKey}: ${formatNumber(point?.[0])}<br/>${yKey}: ${formatNumber(point?.[1])}`,
+      },
+      grid: { top: 72, right: 36, bottom: 54, left: 64 },
+      xAxis: { type: "value", name: xKey },
+      yAxis: { type: "value", name: yKey },
+      series: [
+        {
+          name: `${xKey} vs ${yKey}`,
+          type: "scatter",
+          symbolSize: 12,
+          data: data.map((row, index) => [
+            Number(row[xKey]) || index + 1,
+            Number(row[yKey]) || 0,
+            row.name,
+          ]),
+        },
+      ],
+    };
+  }
+
+  const seriesType =
+    chartType === "area" ? "line" : chartType === "bar" ? "bar" : "line";
+  return {
+    ...baseCartesian,
+    series: metricKeys.map((key) => ({
+      name: key,
+      type: seriesType,
+      smooth: seriesType === "line",
+      areaStyle: chartType === "area" ? { opacity: 0.16 } : undefined,
+      emphasis: { focus: "series" },
+      data: data.map((row) => Number(row[key]) || 0),
+    })),
+  };
+}
+
+function normalizeOption(rawOption, content) {
+  const option = rawOption ?? legacyContentToOption(content);
+  const theme = chartThemeColors();
+  return {
+    ...option,
+    color: chartPalette,
+    backgroundColor: "transparent",
+    animationDuration: 550,
+    textStyle: {
+      color: theme.text,
+      fontFamily: "Inter, Helvetica, Arial, sans-serif",
+      ...(option.textStyle || {}),
+    },
+    title: {
+      left: 0,
+      top: 0,
+      text: content?.title || "Generated chart",
+      textStyle: { color: theme.heading, fontSize: 16, fontWeight: 700 },
+      ...(option.title || {}),
+    },
+    tooltip: {
+      confine: true,
+      renderMode: "richText",
+      backgroundColor: theme.tooltipBg,
+      borderColor: theme.tooltipBorder,
+      textStyle: { color: theme.text },
+      valueFormatter: formatNumber,
+      ...(option.tooltip || {}),
+    },
+    legend: {
+      type: "scroll",
+      top: 34,
+      right: 0,
+      textStyle: { color: theme.muted },
+      ...(option.legend || {}),
+    },
+    xAxis: normalizeAxis(option.xAxis, theme),
+    yAxis: normalizeAxis(option.yAxis, theme),
+  };
+}
+
+export function Chartable({ props }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+  const content = useMemo(() => parseContent(props.content), [props.content]);
+  const option = useMemo(() => {
+    if (!content) return null;
+    return normalizeOption(parseOption(content), content);
+  }, [content]);
+
+  useEffect(() => {
+    if (!containerRef.current || !option) return;
+
+    const chart = echarts.init(containerRef.current, null, {
+      renderer: "canvas",
+      useDirtyRect: true,
+    });
+    chartRef.current = chart;
+    chart.setOption(option, true);
+
+    const resizeObserver = new ResizeObserver(() => chart.resize());
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      chart.dispose();
+      chartRef.current = null;
+    };
+  }, [option]);
+
+  const handleDownload = useCallback(async () => {
+    if (!chartRef.current) return;
+    setLoading(true);
+    try {
+      const jpeg = chartRef.current.getDataURL({
+        type: "jpeg",
+        pixelRatio: 2,
+        backgroundColor: "#393d43",
+      });
+      saveAs(jpeg, `chart-${v4().split("-")[0]}.jpg`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  if (!content || !option) return null;
+
+  return (
+    <div className="flex justify-start w-full">
+      <div className="py-2 px-4 w-full flex flex-col md:max-w-[88%]">
+        <div className="relative w-full">
+          <DownloadGraph loading={loading} onClick={handleDownload} />
+          <div className="bg-theme-bg-primary rounded-xl light:border light:border-theme-border-primary p-5">
+            <div ref={containerRef} className="w-full h-[430px]" />
+          </div>
+          {!!content.caption && (
             <span
               className="flex flex-col gap-y-1 mt-2"
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(renderMarkdown(content.caption)),
               }}
             />
-          </div>
+          )}
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex justify-start w-full">
-      <div className="py-2 px-4 w-full flex flex-col md:max-w-[80%]">
-        <div className="relative w-full">
-          <DownloadGraph onClick={handleDownload} />
-          <div ref={ref}>{renderChart()}</div>
-        </div>
-        <span
-          className="flex flex-col gap-y-1 mt-2"
-          dangerouslySetInnerHTML={{
-            __html: DOMPurify.sanitize(renderMarkdown(content.caption)),
-          }}
-        />
       </div>
     </div>
   );
 }
 
-const customTooltip = (props) => {
-  const { payload, active } = props;
-  if (!active || !payload) return null;
-  const categoryPayload = payload?.[0];
-  if (!categoryPayload) return null;
+function DownloadGraph({ loading, onClick }) {
   return (
-    <div className="w-56 bg-theme-bg-primary rounded-lg border p-2 text-white">
-      <div className="flex flex-1 space-x-2.5">
-        <div
-          className={`flex w-1.5 flex-col bg-${categoryPayload?.color}-500 rounded`}
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className="absolute top-5 right-5 z-50 p-1 rounded-full border-none disabled:opacity-60"
+      aria-label={loading ? "Downloading image..." : "Download graph image"}
+    >
+      {loading ? (
+        <CircleNotch className="text-theme-text-primary w-5 h-5 animate-spin" />
+      ) : (
+        <DownloadSimple
+          weight="bold"
+          className="text-theme-text-primary w-5 h-5 hover:text-theme-text-primary"
         />
-        <div className="w-full">
-          <div className="flex items-center justify-between space-x-8">
-            <p className="whitespace-nowrap text-right text-tremor-content">
-              {categoryPayload.name}
-            </p>
-            <p className="whitespace-nowrap text-right font-medium text-tremor-content-emphasis">
-              {categoryPayload.value}
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-function DownloadGraph({ onClick }) {
-  const [loading, setLoading] = useState(false);
-  const handleClick = async () => {
-    setLoading(true);
-    await onClick?.();
-    setLoading(false);
-  };
-
-  return (
-    <div className="absolute top-3 right-3 z-50 cursor-pointer">
-      <div className="flex flex-col items-center">
-        <div className="p-1 rounded-full border-none">
-          {loading ? (
-            <CircleNotch
-              className="text-theme-text-primary w-5 h-5 animate-spin"
-              aria-label="Downloading image..."
-            />
-          ) : (
-            <DownloadSimple
-              weight="bold"
-              className="text-theme-text-primary w-5 h-5 hover:text-theme-text-primary"
-              onClick={handleClick}
-              aria-label="Download graph image"
-            />
-          )}
-        </div>
-      </div>
-    </div>
+      )}
+    </button>
   );
 }
 

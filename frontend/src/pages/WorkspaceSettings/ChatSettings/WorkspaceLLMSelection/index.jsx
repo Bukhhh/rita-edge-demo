@@ -1,7 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import AnythingLLMIcon from "@/media/logo/anything-llm-icon.png";
 import WorkspaceLLMItem from "./WorkspaceLLMItem";
-import { AVAILABLE_LLM_PROVIDERS } from "@/pages/GeneralSettings/LLMPreference";
+import {
+  AVAILABLE_LLM_PROVIDERS,
+  ritaProviderIsEnabled,
+} from "@/pages/GeneralSettings/LLMPreference";
 import { CaretUpDown, MagnifyingGlass, X } from "@phosphor-icons/react";
 import ChatModelSelection from "./ChatModelSelection";
 import { useTranslation } from "react-i18next";
@@ -29,19 +32,30 @@ const LLM_DEFAULT = {
   requiredConfig: [],
 };
 
-const LLMS = [LLM_DEFAULT, ...AVAILABLE_LLM_PROVIDERS].filter(
-  (llm) => !DISABLED_PROVIDERS.includes(llm.value)
-);
+const RITA_ALLOWED_WORKSPACE_LLMS = ["default", "groq", "ollama"];
 
 export default function WorkspaceLLMSelection({
   settings,
   workspace,
   setHasChanges,
 }) {
-  const [filteredLLMs, setFilteredLLMs] = useState([]);
-  const [selectedLLM, setSelectedLLM] = useState(
-    workspace?.chatProvider ?? "default"
+  const LLMS = useMemo(
+    () =>
+      [LLM_DEFAULT, ...AVAILABLE_LLM_PROVIDERS].filter(
+        (llm) =>
+          RITA_ALLOWED_WORKSPACE_LLMS.includes(llm.value) &&
+          !DISABLED_PROVIDERS.includes(llm.value) &&
+          ritaProviderIsEnabled(llm.value, settings)
+      ),
+    [settings]
   );
+  const [filteredLLMs, setFilteredLLMs] = useState([]);
+  const [selectedLLM, setSelectedLLM] = useState(() => {
+    const savedProvider = workspace?.chatProvider ?? "default";
+    return LLMS.some((llm) => llm.value === savedProvider)
+      ? savedProvider
+      : "default";
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMenuOpen, setSearchMenuOpen] = useState(false);
   const searchInputRef = useRef(null);
@@ -68,7 +82,15 @@ export default function WorkspaceLLMSelection({
     );
     setFilteredLLMs(filtered);
   }, [LLMS, searchQuery, selectedLLM]);
-  const selectedLLMObject = LLMS.find((llm) => llm.value === selectedLLM);
+
+  useEffect(() => {
+    if (!LLMS.some((llm) => llm.value === selectedLLM)) {
+      setSelectedLLM(LLM_DEFAULT.value);
+      setHasChanges(true);
+    }
+  }, [LLMS, selectedLLM, setHasChanges]);
+  const selectedLLMObject =
+    LLMS.find((llm) => llm.value === selectedLLM) ?? LLM_DEFAULT;
 
   return (
     <div className="border-b border-white/40 pb-8">

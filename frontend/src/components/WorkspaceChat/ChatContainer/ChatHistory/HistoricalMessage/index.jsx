@@ -20,6 +20,7 @@ import { Link } from "react-router-dom";
 import { chatQueryRefusalResponse } from "@/utils/chat";
 import HistoricalOutputs from "./HistoricalOutputs";
 import { openImageLightbox } from "@/components/ImageLightbox";
+import useUser from "@/hooks/useUser";
 
 const HistoricalMessage = ({
   uuid: uuidProp,
@@ -294,6 +295,8 @@ function TruncatableContent({ children }) {
 
 const RenderChatContent = memo(
   ({ role, message, messageId }) => {
+    const { user } = useUser();
+    const isAdmin = !user?.role || user.role === "admin";
     // If the message is not from the assistant, we can render it directly
     // as normal since the user cannot think (lol)
     if (role !== "assistant")
@@ -329,7 +332,7 @@ const RenderChatContent = memo(
 
     return (
       <>
-        {thoughtChain && (
+        {isAdmin && thoughtChain && (
           <ThoughtChainComponent content={thoughtChain} messageId={messageId} />
         )}
         <span

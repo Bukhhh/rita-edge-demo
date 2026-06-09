@@ -525,6 +525,9 @@ class EphemeralAgentHandler extends AgentHandler {
     if (this.#isAgentCommandInvocation({ message })) return true;
     if (chatMode === "automatic") {
       if (!workspace) return false;
+      const { SystemSettings } = require("../../models/systemSettings");
+      const ritaCapabilities = await SystemSettings.ritaCapabilities();
+      if (ritaCapabilities.agent_auto_mode !== true) return false;
       if (await Workspace.supportsNativeToolCalling(workspace)) return true;
       return false;
     }

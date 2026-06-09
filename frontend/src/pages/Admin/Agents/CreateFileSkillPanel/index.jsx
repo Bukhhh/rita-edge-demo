@@ -7,6 +7,7 @@ import {
   FileDoc,
   FilePdf,
   FileText,
+  ChartLine,
   CircleNotch,
 } from "@phosphor-icons/react";
 import Admin from "@/models/admin";
@@ -33,6 +34,14 @@ export const getCreateFileSkills = (t) => [
     icon: FilePdf,
   },
   {
+    name: "create-chart-pdf-report",
+    title: t("agent.skill.createFiles.skills.create-chart-pdf-report.title"),
+    description: t(
+      "agent.skill.createFiles.skills.create-chart-pdf-report.description"
+    ),
+    icon: ChartLine,
+  },
+  {
     name: "create-excel-file",
     title: t("agent.skill.createFiles.skills.create-xlsx.title"),
     description: t("agent.skill.createFiles.skills.create-xlsx.description"),
@@ -43,6 +52,14 @@ export const getCreateFileSkills = (t) => [
     title: t("agent.skill.createFiles.skills.create-docx.title"),
     description: t("agent.skill.createFiles.skills.create-docx.description"),
     icon: FileDoc,
+  },
+  {
+    name: "create-matplotlib-chart",
+    title: t("agent.skill.createFiles.skills.create-matplotlib-chart.title"),
+    description: t(
+      "agent.skill.createFiles.skills.create-matplotlib-chart.description"
+    ),
+    icon: ChartLine,
   },
 ];
 

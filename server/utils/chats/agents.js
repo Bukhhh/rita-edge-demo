@@ -4,6 +4,7 @@ const {
 } = require("../../models/workspaceAgentInvocation");
 const { writeResponseChunk } = require("../helpers/chat/responses");
 const { Workspace } = require("../../models/workspace");
+const { SystemSettings } = require("../../models/systemSettings");
 
 /**
  * In-memory cache for attachments associated with agent invocations.
@@ -12,6 +13,7 @@ const { Workspace } = require("../../models/workspace");
  * @type {Map<string, Array>}
  */
 const invocationAttachmentsCache = new Map();
+const invocationRitaAgentsCache = new Map();
 
 /**
  * Store attachments for an invocation UUID
@@ -35,6 +37,17 @@ function getAndClearInvocationAttachments(uuid) {
   return attachments;
 }
 
+function cacheInvocationRitaAgent(uuid, ritaAgent = null) {
+  if (!uuid || !ritaAgent) return;
+  invocationRitaAgentsCache.set(uuid, ritaAgent);
+}
+
+function getAndClearInvocationRitaAgent(uuid) {
+  const agent = invocationRitaAgentsCache.get(uuid) || null;
+  invocationRitaAgentsCache.delete(uuid);
+  return agent;
+}
+
 async function grepAgents({
   uuid,
   response,
@@ -43,16 +56,24 @@ async function grepAgents({
   user = null,
   thread = null,
   attachments = [],
+  selectedRitaAgentId = null,
 }) {
   let nativeToolingEnabled = false;
+  const selectedRitaAgent = await SystemSettings.ritaAgentById(
+    selectedRitaAgentId
+  );
 
   // If the workspace is in automatic mode, check if the workspace supports native tooling
   // to determine if the agent flow should be used or not.
-  if (workspace?.chatMode === "automatic")
-    nativeToolingEnabled = await Workspace.supportsNativeToolCalling(workspace);
+  if (workspace?.chatMode === "automatic") {
+    const ritaCapabilities = await SystemSettings.ritaCapabilities();
+    nativeToolingEnabled =
+      ritaCapabilities.agent_auto_mode === true &&
+      (await Workspace.supportsNativeToolCalling(workspace));
+  }
 
   const agentHandles = WorkspaceAgentInvocation.parseAgents(message);
-  if (agentHandles.length > 0 || nativeToolingEnabled) {
+  if (agentHandles.length > 0 || nativeToolingEnabled || selectedRitaAgent) {
     const { invocation: newInvocation } = await WorkspaceAgentInvocation.new({
       prompt: message,
       workspace: workspace,
@@ -80,6 +101,7 @@ async function grepAgents({
 
     // Cache attachments for the websocket handler to retrieve later
     cacheInvocationAttachments(newInvocation.uuid, attachments);
+    cacheInvocationRitaAgent(newInvocation.uuid, selectedRitaAgent);
 
     writeResponseChunk(response, {
       id: uuid,
@@ -96,7 +118,9 @@ async function grepAgents({
       id: uuid,
       type: "statusResponse",
       textResponse:
-        "@agent: Swapping over to agent chat. Type /exit to exit agent execution loop early.",
+        selectedRitaAgent
+          ? `${selectedRitaAgent.name}: Connected. Type /exit to exit agent execution loop early.`
+          : "@agent: Swapping over to agent chat. Type /exit to exit agent execution loop early.",
       sources: [],
       close: true,
       error: null,
@@ -108,4 +132,8 @@ async function grepAgents({
   return false;
 }
 
-module.exports = { grepAgents, getAndClearInvocationAttachments };
+module.exports = {
+  grepAgents,
+  getAndClearInvocationAttachments,
+  getAndClearInvocationRitaAgent,
+};

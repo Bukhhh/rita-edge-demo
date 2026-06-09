@@ -1,6 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import debounce from "lodash.debounce";
-import { ArrowUp, At } from "@phosphor-icons/react";
+import {
+  ArrowUp,
+  At,
+  ChartBar,
+  ChartLine,
+  ChartPie,
+  X,
+  FileDoc,
+  FilePdf,
+  ImageSquare,
+  Table,
+} from "@phosphor-icons/react";
 import StopGenerationButton from "./StopGenerationButton";
 import SpeechToText from "./SpeechToText";
 import { Tooltip } from "react-tooltip";
@@ -14,10 +25,17 @@ import {
 import useTextSize from "@/hooks/useTextSize";
 import { useTranslation } from "react-i18next";
 import Appearance from "@/models/appearance";
+import System from "@/models/system";
 import usePromptInputStorage from "@/hooks/usePromptInputStorage";
 import ToolsMenu, { TOOLS_MENU_KEYBOARD_EVENT } from "./ToolsMenu";
+import {
+  RITA_SELECTED_AGENT_EVENT,
+  RITA_SELECTED_AGENT_KEY,
+} from "./ToolsMenu/Tabs/RitaAgents";
 import { useSearchParams } from "react-router-dom";
 import { useIsAgentSessionActive } from "@/utils/chat/agent";
+import RitaGraphAgentImage from "@/media/rita-agents/rita-graph-agent.jpg";
+import RitaReportAgentImage from "@/media/rita-agents/rita-report-agent.jpg";
 
 export const PROMPT_INPUT_ID = "primary-prompt-input";
 export const PROMPT_INPUT_EVENT = "set_prompt_input";
@@ -49,6 +67,7 @@ export default function PromptInput({
   const agentSessionActive = useIsAgentSessionActive();
   const [promptInput, setPromptInput] = useState("");
   const [showTools, setShowTools] = useState(false);
+  const [selectedRitaAgent, setSelectedRitaAgent] = useState(null);
   const autoOpenedToolsRef = useRef(false);
   const toolsHighlightRef = useRef(-1);
   const formRef = useRef(null);
@@ -58,6 +77,35 @@ export default function PromptInput({
   const redoStack = useRef([]);
   const { textSizeClass } = useTextSize();
   const [searchParams] = useSearchParams();
+
+  function disconnectRitaAgent() {
+    window.localStorage.removeItem(RITA_SELECTED_AGENT_KEY);
+    window.dispatchEvent(new CustomEvent(RITA_SELECTED_AGENT_EVENT));
+    textareaRef.current?.focus();
+  }
+
+  async function syncSelectedRitaAgent() {
+    const selectedId = window.localStorage.getItem(RITA_SELECTED_AGENT_KEY);
+    if (!selectedId) {
+      setSelectedRitaAgent(null);
+      return;
+    }
+    const settings = await System.keys();
+    const agent = (settings?.RitaAgents || []).find(
+      (agent) => agent.id === selectedId && agent.enabled
+    );
+    setSelectedRitaAgent(agent || null);
+  }
+
+  useEffect(() => {
+    syncSelectedRitaAgent();
+    window.addEventListener(RITA_SELECTED_AGENT_EVENT, syncSelectedRitaAgent);
+    return () =>
+      window.removeEventListener(
+        RITA_SELECTED_AGENT_EVENT,
+        syncSelectedRitaAgent
+      );
+  }, []);
 
   // Synchronizes prompt input value with localStorage, scoped to the current thread.
   usePromptInputStorage({
@@ -340,6 +388,15 @@ export default function PromptInput({
               centered={centered}
               highlightedIndexRef={toolsHighlightRef}
             />
+            <RitaAgentBuilderPanel
+              agent={selectedRitaAgent}
+              promptInput={promptInput}
+              setPromptInput={setPromptInput}
+              sendCommand={sendCommand}
+              textareaRef={textareaRef}
+              onDisconnect={disconnectRitaAgent}
+              disabled={isStreaming || isDisabled}
+            />
             <div className="bg-zinc-800 light:bg-white light:border light:border-slate-300 rounded-[20px] pwa:rounded-3xl flex flex-col px-5 overflow-hidden">
               <AttachmentManager attachments={attachments} />
               <div className="flex items-center">
@@ -370,6 +427,10 @@ export default function PromptInput({
                     <AttachItem
                       workspaceSlug={workspaceSlug}
                       workspaceThreadSlug={threadSlug}
+                    />
+                    <SelectedRitaAgentBadge
+                      agent={selectedRitaAgent}
+                      onDisconnect={disconnectRitaAgent}
                     />
                     <AgentSessionButton
                       sendCommand={sendCommand}
@@ -403,6 +464,531 @@ export default function PromptInput({
         </div>
       </form>
     </div>
+  );
+}
+
+const ANALYSIS_OPTIONS = [
+  "sales trend",
+  "top performing items",
+  "regional breakdown",
+  "category comparison",
+  "monthly summary",
+  "anomalies or outliers",
+];
+
+const REPORT_CHART_OPTIONS = [
+  {
+    label: "Auto choose",
+    value: "auto choose the best chart type",
+    icon: Table,
+  },
+  { label: "Bar", value: "bar chart", icon: ChartBar },
+  { label: "Horizontal bar", value: "horizontal_bar chart", icon: ChartBar },
+  { label: "Stacked bar", value: "stacked_bar chart", icon: ChartBar },
+  { label: "Line", value: "line chart", icon: ChartLine },
+  { label: "Area", value: "area chart", icon: ChartLine },
+  { label: "Pie", value: "pie chart", icon: ChartPie },
+  { label: "Donut", value: "donut chart", icon: ChartPie },
+  { label: "Histogram", value: "histogram", icon: ChartBar },
+  { label: "Scatter", value: "scatter plot", icon: ChartLine },
+  { label: "Table", value: "table only", icon: Table },
+];
+const REPORT_MAX_CHARTS = 3;
+
+const GRAPH_CHART_OPTIONS = [
+  { label: "Auto", value: "auto choose the best single chart", icon: Table },
+  { label: "Bar", value: "bar chart", icon: ChartBar },
+  { label: "Horizontal bar", value: "horizontal_bar chart", icon: ChartBar },
+  { label: "Stacked bar", value: "stacked_bar chart", icon: ChartBar },
+  { label: "Line", value: "line chart", icon: ChartLine },
+  { label: "Area", value: "area chart", icon: ChartLine },
+  { label: "Pie", value: "pie chart", icon: ChartPie },
+  { label: "Donut", value: "donut chart", icon: ChartPie },
+  { label: "Histogram", value: "histogram", icon: ChartBar },
+  { label: "Scatter", value: "scatter plot", icon: ChartLine },
+];
+
+function RitaAgentBuilderPanel({
+  agent = null,
+  promptInput = "",
+  setPromptInput,
+  sendCommand,
+  textareaRef,
+  onDisconnect,
+  disabled = false,
+}) {
+  const [dismissedBuilderAgentId, setDismissedBuilderAgentId] = useState(null);
+
+  useEffect(() => {
+    setDismissedBuilderAgentId(null);
+  }, [agent?.id]);
+
+  if (!agent) return null;
+  if (dismissedBuilderAgentId === agent.id) return null;
+  if (agent.id === "rita-report-agent") {
+    return (
+      <ReportAgentBuilder
+        promptInput={promptInput}
+        setPromptInput={setPromptInput}
+        sendCommand={sendCommand}
+        textareaRef={textareaRef}
+        onDisconnect={onDisconnect}
+        disabled={disabled}
+        onSubmitted={() => setDismissedBuilderAgentId(agent.id)}
+      />
+    );
+  }
+  if (agent.id === "rita-graph-agent") {
+    return (
+      <GraphAgentBuilder
+        promptInput={promptInput}
+        setPromptInput={setPromptInput}
+        sendCommand={sendCommand}
+        textareaRef={textareaRef}
+        onDisconnect={onDisconnect}
+        disabled={disabled}
+        onSubmitted={() => setDismissedBuilderAgentId(agent.id)}
+      />
+    );
+  }
+  return null;
+}
+
+function ReportAgentBuilder({
+  promptInput,
+  setPromptInput,
+  sendCommand,
+  textareaRef,
+  onDisconnect,
+  onSubmitted,
+  disabled = false,
+}) {
+  const [analysis, setAnalysis] = useState(() => new Set(["sales trend"]));
+  const [chartTypes, setChartTypes] = useState(
+    () => new Set(["auto choose the best chart type"])
+  );
+  const [output, setOutput] = useState("pdf");
+
+  function toggleAnalysis(value) {
+    setAnalysis((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) {
+        if (next.size === 1) return next;
+        next.delete(value);
+      } else {
+        next.add(value);
+      }
+      return next;
+    });
+  }
+
+  function toggleChartType(value) {
+    setChartTypes((prev) => {
+      const next = new Set(prev);
+      const isAuto = value === "auto choose the best chart type";
+
+      if (isAuto) return new Set([value]);
+      next.delete("auto choose the best chart type");
+
+      if (next.has(value)) {
+        if (next.size === 1) return next;
+        next.delete(value);
+      } else if (next.size < REPORT_MAX_CHARTS) {
+        next.add(value);
+      }
+
+      return next.size ? next : new Set(["auto choose the best chart type"]);
+    });
+  }
+
+  function generateReport() {
+    if (disabled) return;
+    const extra = promptInput.trim();
+    const prompt = buildReportAgentPrompt({
+      analysis: [...analysis],
+      chartTypes: [...chartTypes],
+      output,
+      extra,
+    });
+    sendCommand({
+      text: prompt,
+      displayText: `Generate ${output.toUpperCase()} report with ${[...chartTypes].length} chart option(s): ${[...analysis].join(", ")}`,
+      autoSubmit: true,
+    });
+    setPromptInput("");
+    onSubmitted?.();
+    textareaRef.current?.focus();
+  }
+
+  return (
+    <BuilderPanel title="RITA Report Builder" onClose={onDisconnect}>
+      <BuilderHint>
+        Upload your PDF/document using the attach button, choose the report
+        options, then add extra notes in chat if needed.
+      </BuilderHint>
+      <BuilderSection label="Report focus">
+        <div className="flex flex-wrap gap-1.5">
+          {ANALYSIS_OPTIONS.map((option) => (
+            <BuilderChip
+              key={option}
+              active={analysis.has(option)}
+              onClick={() => toggleAnalysis(option)}
+            >
+              {option}
+            </BuilderChip>
+          ))}
+        </div>
+      </BuilderSection>
+      <BuilderSection label={`Charts: choose up to ${REPORT_MAX_CHARTS}`}>
+        <IconOptionGrid>
+          {REPORT_CHART_OPTIONS.map((option) => (
+            <IconOption
+              key={option.value}
+              option={option}
+              active={chartTypes.has(option.value)}
+              disabled={
+                !chartTypes.has(option.value) &&
+                option.value !== "auto choose the best chart type" &&
+                chartTypes.size >= REPORT_MAX_CHARTS
+              }
+              onClick={() => toggleChartType(option.value)}
+            />
+          ))}
+        </IconOptionGrid>
+        <p className="text-[10px] text-zinc-500 light:text-slate-500">
+          Selected {chartTypes.size}/{REPORT_MAX_CHARTS}. The report can include
+          up to three charts.
+        </p>
+      </BuilderSection>
+      <BuilderSection label="Output">
+        <div className="grid grid-cols-3 gap-1.5">
+          <OutputOption
+            label="PDF"
+            icon={FilePdf}
+            active={output === "pdf"}
+            onClick={() => setOutput("pdf")}
+          />
+          <OutputOption
+            label="DOCX"
+            icon={FileDoc}
+            active={output === "docx"}
+            onClick={() => setOutput("docx")}
+          />
+          <OutputOption
+            label="Both"
+            icon={FilePdf}
+            active={output === "pdf and docx"}
+            onClick={() => setOutput("pdf and docx")}
+          />
+        </div>
+      </BuilderSection>
+      <button
+        type="button"
+        onClick={generateReport}
+        disabled={disabled}
+        className={`w-full rounded-md text-xs font-semibold px-3 py-2 transition-colors ${
+          disabled
+            ? "cursor-not-allowed bg-zinc-700 light:bg-slate-300 text-zinc-400 light:text-slate-500"
+            : "bg-white hover:bg-zinc-200 light:bg-slate-800 light:hover:bg-slate-700 text-zinc-900 light:text-white"
+        }`}
+      >
+        {disabled ? "Waiting for file/context..." : "Generate Report"}
+      </button>
+    </BuilderPanel>
+  );
+}
+
+function GraphAgentBuilder({
+  promptInput,
+  setPromptInput,
+  sendCommand,
+  textareaRef,
+  onDisconnect,
+  onSubmitted,
+  disabled = false,
+}) {
+  const [focus, setFocus] = useState("key statistics");
+  const [chartType, setChartType] = useState(
+    "auto choose the best single chart"
+  );
+  const [output, setOutput] = useState("png");
+
+  function generateGraph() {
+    if (disabled) return;
+    const extra = promptInput.trim();
+    const prompt = buildGraphAgentPrompt({
+      focus,
+      chartType,
+      output,
+      extra,
+    });
+    sendCommand({
+      text: prompt,
+      displayText: `Generate one ${chartType.replace("auto choose the best single chart", "auto-selected chart")} as ${output.toUpperCase()}`,
+      autoSubmit: true,
+    });
+    setPromptInput("");
+    onSubmitted?.();
+    textareaRef.current?.focus();
+  }
+
+  return (
+    <BuilderPanel title="RITA Graph Builder" onClose={onDisconnect}>
+      <BuilderHint>
+        Graph Agent creates exactly one graph. Upload a document or describe the
+        data in chat, then choose the chart and output.
+      </BuilderHint>
+      <BuilderSection label="Data to analyse">
+        <input
+          type="text"
+          value={focus}
+          onChange={(e) => setFocus(e.target.value)}
+          placeholder="Example: monthly sales, parliament seats, revenue by state"
+          className="w-full rounded-md border border-zinc-700 light:border-slate-300 bg-zinc-900 light:bg-white px-2 py-2 text-xs text-white light:text-slate-900 placeholder:text-zinc-500"
+        />
+      </BuilderSection>
+      <BuilderSection label="One graph only">
+        <IconOptionGrid>
+          {GRAPH_CHART_OPTIONS.map((option) => (
+            <IconOption
+              key={option.value}
+              option={option}
+              active={chartType === option.value}
+              onClick={() => setChartType(option.value)}
+            />
+          ))}
+        </IconOptionGrid>
+      </BuilderSection>
+      <BuilderSection label="Output">
+        <div className="grid grid-cols-2 gap-1.5">
+          <OutputOption
+            label="PNG"
+            icon={ImageSquare}
+            active={output === "png"}
+            onClick={() => setOutput("png")}
+          />
+          <OutputOption
+            label="PDF"
+            icon={FilePdf}
+            active={output === "pdf"}
+            onClick={() => setOutput("pdf")}
+          />
+        </div>
+      </BuilderSection>
+      <button
+        type="button"
+        onClick={generateGraph}
+        disabled={disabled}
+        className={`w-full rounded-md text-xs font-semibold px-3 py-2 transition-colors ${
+          disabled
+            ? "cursor-not-allowed bg-zinc-700 light:bg-slate-300 text-zinc-400 light:text-slate-500"
+            : "bg-white hover:bg-zinc-200 light:bg-slate-800 light:hover:bg-slate-700 text-zinc-900 light:text-white"
+        }`}
+      >
+        {disabled ? "Waiting for file/context..." : "Generate One Graph"}
+      </button>
+    </BuilderPanel>
+  );
+}
+
+function buildReportAgentPrompt({ analysis, chartTypes, output, extra }) {
+  const outputInstructions = {
+    pdf: "Create a polished PDF report. Prefer create-chart-pdf-report when charts are requested.",
+    docx: "Create a polished DOCX report using the document creation tool.",
+    "pdf and docx":
+      "Create both a polished PDF report and a DOCX report. Use chart/report tools where appropriate.",
+  }[output];
+
+  return [
+    "RITA Report Builder request.",
+    "Use the uploaded/attached document, parsed file context, or workspace context.",
+    "If <attached_documents> context is present in the conversation, treat it as the uploaded source data and do not ask the user to upload again.",
+    `Analyse: ${analysis.join(", ")}.`,
+    `Preferred charts: ${chartTypes.join(", ")}.`,
+    "Generate up to three charts in the report. Each chart should cover a different useful angle and should not duplicate the same insight.",
+    `Output: ${output}.`,
+    outputInstructions,
+    "Write for non-technical users. Keep the report structured, clear, and management-friendly.",
+    "If the source document is unclear but context exists, make reasonable assumptions and state them briefly.",
+    "Only ask the user to upload data when there is no attached document, no parsed file context, no workspace context, and no user-provided data.",
+    extra ? `Additional user notes: ${extra}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildGraphAgentPrompt({ focus, chartType, output, extra }) {
+  return [
+    "RITA Graph Builder request.",
+    "Use the uploaded/attached document, parsed file context, workspace context, or user-provided data.",
+    "If <attached_documents> context is present in the conversation, treat it as the uploaded source data and do not ask the user to upload again.",
+    "Create exactly one graph only. Do not create multiple charts.",
+    `Data/focus to analyse: ${focus}.`,
+    `Chart type: ${chartType}.`,
+    `Output: ${output}.`,
+    output === "png"
+      ? "Use the matplotlib PNG chart tool where possible."
+      : "Create a one-chart PDF output where possible.",
+    "Include a short plain-language insight explaining the graph.",
+    "Only ask the user to upload data when there is no attached document, no parsed file context, no workspace context, and no user-provided data.",
+    extra ? `Additional user notes: ${extra}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function BuilderPanel({ title, onClose, children }) {
+  return (
+    <div className="mb-2 rounded-xl border border-white/10 light:border-slate-300 bg-zinc-900 light:bg-slate-50 p-3 shadow-lg">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-white light:text-slate-900">
+          {title}
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-green-300 light:text-green-700">
+            Connected
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-7 w-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 light:text-slate-500 light:hover:text-slate-900 light:hover:bg-slate-200 transition-colors"
+            aria-label="Disconnect RITA Agent"
+            title="Disconnect RITA Agent"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-col gap-3">{children}</div>
+    </div>
+  );
+}
+
+function BuilderHint({ children }) {
+  return (
+    <p className="text-[11px] leading-relaxed text-zinc-400 light:text-slate-600">
+      {children}
+    </p>
+  );
+}
+
+function BuilderSection({ label, children }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-[10px] uppercase tracking-wide font-semibold text-zinc-500 light:text-slate-500">
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function BuilderChip({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-2.5 py-1 border text-[11px] transition-colors ${
+        active
+          ? "border-blue-400 bg-blue-500/10 text-blue-100 light:bg-blue-50 light:text-blue-800"
+          : "border-zinc-700 light:border-slate-300 text-zinc-300 light:text-slate-700 hover:bg-zinc-700/50 light:hover:bg-slate-100"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function IconOptionGrid({ children }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">{children}</div>
+  );
+}
+
+function IconOption({ option, active, disabled = false, onClick }) {
+  const Icon = option.icon;
+  const stateClass = active
+    ? "border-blue-400 bg-blue-500/10 light:bg-blue-50"
+    : disabled
+      ? "border-zinc-800 light:border-slate-200 opacity-40 cursor-not-allowed"
+      : "border-zinc-700 light:border-slate-300 hover:bg-zinc-700/50 light:hover:bg-slate-100";
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-md border px-2 py-2 flex items-center gap-1.5 text-left transition-colors ${stateClass}`}
+    >
+      <Icon size={16} className="text-white light:text-slate-700 shrink-0" />
+      <span className="text-[11px] text-white light:text-slate-800 truncate">
+        {option.label}
+      </span>
+    </button>
+  );
+}
+
+function OutputOption({ label, icon: Icon, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md border px-2 py-2 flex items-center justify-center gap-1.5 transition-colors ${
+        active
+          ? "border-blue-400 bg-blue-500/10 light:bg-blue-50"
+          : "border-zinc-700 light:border-slate-300 hover:bg-zinc-700/50 light:hover:bg-slate-100"
+      }`}
+    >
+      <Icon size={16} className="text-white light:text-slate-700" />
+      <span className="text-[11px] font-medium text-white light:text-slate-800">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function SelectedRitaAgentBadge({ agent = null, onDisconnect }) {
+  if (!agent) return null;
+  return (
+    <div className="flex items-center gap-x-1.5 rounded-full py-1 pl-2.5 pr-1 bg-white/10 light:bg-slate-100 text-white light:text-slate-700 text-xs">
+      <RitaAgentAvatar agent={agent} size="sm" />
+      <span>{agent.name}</span>
+      <button
+        type="button"
+        onClick={onDisconnect}
+        className="h-5 w-5 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 light:text-slate-500 light:hover:text-slate-900 light:hover:bg-slate-200 transition-colors"
+        title="Disconnect RITA Agent"
+        aria-label="Disconnect RITA Agent"
+      >
+        <X size={12} />
+      </button>
+    </div>
+  );
+}
+
+function RitaAgentAvatar({ agent, size = "md" }) {
+  const image = {
+    "rita-report-agent": RitaReportAgentImage,
+    "rita-graph-agent": RitaGraphAgentImage,
+  }[agent?.id];
+  const sizeClass = size === "sm" ? "h-4 w-4" : "h-8 w-8";
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt={agent.name}
+        className={`${sizeClass} rounded-full object-cover shrink-0`}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`${sizeClass} rounded-full flex items-center justify-center text-[8px] text-white font-bold shrink-0`}
+      style={{ backgroundColor: agent.color }}
+    >
+      {agent.icon}
+    </span>
   );
 }
 

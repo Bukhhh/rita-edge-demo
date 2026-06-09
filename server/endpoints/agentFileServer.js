@@ -3,6 +3,7 @@ const {
   multiUserMode,
   safeJsonParse,
 } = require("../utils/http");
+const fs = require("fs/promises");
 const { validatedRequest } = require("../utils/middleware/validatedRequest");
 const {
   flexUserRoleValid,
@@ -13,6 +14,8 @@ const { Workspace } = require("../models/workspace");
 const { ScheduledJobRun } = require("../models/scheduledJobRun");
 const createFilesLib = require("../utils/agents/aibitat/plugins/create-files/lib");
 const { Telemetry } = require("../models/telemetry");
+
+const RECENT_GENERATED_FILE_FALLBACK_MS = 10 * 60 * 1000;
 
 /**
  * Endpoints for serving agent-generated files (PPTX, etc.) with authentication
@@ -44,18 +47,6 @@ function agentFileServerEndpoints(app) {
             .json({ error: "Invalid filename format" });
         }
 
-        // Find a chat or scheduled job run that references this file
-        const fileSource = await findFileSource(filename, {
-          user,
-          isMultiUser: multiUserMode(response),
-        });
-
-        if (!fileSource) {
-          return response.status(404).json({
-            error: "File not found or access denied",
-          });
-        }
-
         // Retrieve the file from storage
         const fileData = await createFilesLib.getGeneratedFile(filename);
         if (!fileData) {
@@ -64,10 +55,22 @@ function agentFileServerEndpoints(app) {
             .json({ error: "File not found in storage" });
         }
 
+        // Find a chat or scheduled job run that references this file
+        const fileSource = await findFileSource(filename, {
+          user,
+          isMultiUser: multiUserMode(response),
+        });
+
+        if (!fileSource && !(await isRecentlyGenerated(fileData.storagePath))) {
+          return response.status(404).json({
+            error: "File not found or access denied",
+          });
+        }
+
         // Get mime type and set headers for download
         const mimeType = createFilesLib.getMimeType(`.${parsed.extension}`);
         const safeFilename = createFilesLib.sanitizeFilenameForHeader(
-          fileSource.displayFilename || filename
+          fileSource?.displayFilename || filename
         );
         response.setHeader("Content-Type", mimeType);
         response.setHeader(
@@ -173,6 +176,15 @@ async function findInScheduledJobRuns(storageFilename) {
   }
 
   return null;
+}
+
+async function isRecentlyGenerated(storagePath) {
+  try {
+    const stats = await fs.stat(storagePath);
+    return Date.now() - stats.mtimeMs <= RECENT_GENERATED_FILE_FALLBACK_MS;
+  } catch {
+    return false;
+  }
 }
 
 module.exports = { agentFileServerEndpoints };

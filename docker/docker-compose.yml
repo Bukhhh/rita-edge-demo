@@ -1,12 +1,12 @@
-name: anythingllm
+name: rita-edge
 
 networks:
-  anything-llm:
+  rita-edge:
     driver: bridge
 
 services:
-  anything-llm:
-    container_name: anythingllm
+  rita-edge:
+    container_name: rita-edge
     build:
       context: ../.
       dockerfile: ./docker/Dockerfile
@@ -22,10 +22,10 @@ services:
       - "../collector/outputs/:/app/collector/outputs"
     user: "${UID:-1000}:${GID:-1000}"
     ports:
-      - "3001:3001"
+      - "3002:3001"
     env_file:
       - .env
     networks:
-      - anything-llm
+      - rita-edge
     extra_hosts:
       - "host.docker.internal:host-gateway"

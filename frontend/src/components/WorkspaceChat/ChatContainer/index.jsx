@@ -130,6 +130,7 @@ export default function ChatContainer({
    * Send a command to the LLM prompt input.
    * @param {Object} options - Arguments to send to the LLM
    * @param {string} options.text - The text to send to the LLM
+   * @param {string} options.displayText - Optional user-facing text to show in chat history instead of the internal prompt
    * @param {boolean} options.autoSubmit - Determines if the text should be sent immediately or if it should be added to the message state (default: false)
    * @param {Object[]} options.history - The history of the chat prior to this message for overriding the current chat history
    * @param {Object[import("./DnDWrapper").Attachment]} options.attachments - The attachments to send to the LLM for this message
@@ -140,8 +141,9 @@ export default function ChatContainer({
     text = "",
     autoSubmit = false,
     history = [],
-    attachments = [],
+    attachments = null,
     writeMode = "replace",
+    displayText = null,
   } = {}) => {
     // If we are not auto-submitting, we can just emit the text to the prompt input.
     if (!autoSubmit) {
@@ -164,6 +166,9 @@ export default function ChatContainer({
     }
 
     if (!text || text === "") return false;
+    const promptAttachments = Array.isArray(attachments)
+      ? attachments
+      : parseAttachments();
 
     // Clear the localStorage draft so that if the PromptInput remounts
     // (e.g. /reset causing empty→chat or chat→empty transitions),
@@ -182,7 +187,8 @@ export default function ChatContainer({
           role: "assistant",
           pending: true,
           userMessage: text,
-          attachments,
+          displayText: displayText || text,
+          attachments: promptAttachments,
           animate: true,
         },
       ];
@@ -190,16 +196,17 @@ export default function ChatContainer({
       prevChatHistory = [
         ...chatHistory,
         {
-          content: text,
+          content: displayText || text,
           role: "user",
-          attachments,
+          attachments: promptAttachments,
         },
         {
           content: "",
           role: "assistant",
           pending: true,
           userMessage: text,
-          attachments,
+          displayText: displayText || text,
+          attachments: promptAttachments,
           animate: true,
         },
       ];

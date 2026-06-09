@@ -157,7 +157,7 @@ ${JSON.stringify(def.parameters.properties, null, 4)}\n`;
     const historyMessages = this.buildToolCallMessages(history, functions);
     const response = await chatCb({ messages: historyMessages });
 
-    const call = safeJsonParse(response, null);
+    const call = safeJsonParse(sanitizeToolCallJsonResponse(response), null);
     if (call === null) return { toolCall: null, text: response }; // failed to parse, so must be text.
 
     const { valid, reason } = this.validFuncCall(call, functions);
@@ -214,7 +214,10 @@ ${JSON.stringify(def.parameters.properties, null, 4)}\n`;
       }
     }
 
-    const call = safeJsonParse(textResponse, null);
+    const call = safeJsonParse(
+      sanitizeToolCallJsonResponse(textResponse),
+      null
+    );
     if (call === null)
       return { toolCall: null, text: textResponse, uuid: msgUUID }; // failed to parse, so must be regular text response.
 
@@ -432,6 +435,15 @@ ${JSON.stringify(def.parameters.properties, null, 4)}\n`;
       throw error;
     }
   }
+}
+
+function sanitizeToolCallJsonResponse(response) {
+  return String(response || "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
 }
 
 module.exports = UnTooled;

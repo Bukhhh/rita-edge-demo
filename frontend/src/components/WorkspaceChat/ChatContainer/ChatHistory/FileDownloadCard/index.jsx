@@ -1,8 +1,8 @@
-import { memo, useState } from "react";
-import { saveAs } from "file-saver";
+import { memo, useEffect, useState } from "react";
 import { DownloadSimple, CircleNotch } from "@phosphor-icons/react";
 import { humanFileSize } from "@/utils/numbers";
 import StorageFiles from "@/models/files";
+import showToast from "@/utils/toast";
 
 /**
  * @param {{content: {filename: string, storageFilename?: string, fileSize?: number}}} props
@@ -11,6 +11,27 @@ function FileDownloadCard({ props }) {
   const { filename, storageFilename, fileSize } = props.content || {};
   const { badge, badgeBg, badgeText, fileType } = getFileDisplayInfo(filename);
   const [downloading, setDownloading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const canPreview = isPreviewableImage(filename);
+
+  useEffect(() => {
+    if (!canPreview || !storageFilename) return;
+    let objectUrl;
+    let cancelled = false;
+
+    async function loadPreview() {
+      const blob = await StorageFiles.download(storageFilename);
+      if (!blob || cancelled) return;
+      objectUrl = URL.createObjectURL(blob);
+      setPreviewUrl(objectUrl);
+    }
+
+    loadPreview().catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [canPreview, storageFilename]);
 
   const handleDownload = async () => {
     if (downloading) return;
@@ -20,9 +41,10 @@ function FileDownloadCard({ props }) {
     try {
       const blob = await StorageFiles.download(storageFilename);
       if (!blob) throw new Error("Failed to download file");
-      saveAs(blob, filename || storageFilename);
-    } catch {
-      console.error("Failed to download file");
+      downloadBlob(blob, filename || storageFilename);
+    } catch (error) {
+      console.error("Failed to download file", error);
+      showToast("Failed to download generated file.", "error");
     } finally {
       setDownloading(false);
     }
@@ -31,6 +53,13 @@ function FileDownloadCard({ props }) {
   return (
     <div className="flex justify-center w-full my-2">
       <div className="w-full max-w-[750px] mr-4">
+        {previewUrl && (
+          <img
+            src={previewUrl}
+            alt={filename || "Generated image"}
+            className="mb-2 w-full max-h-[520px] object-contain rounded-xl bg-zinc-800 light:bg-slate-100 light:border light:border-slate-200/50"
+          />
+        )}
         <div className="flex items-center justify-between bg-zinc-800 light:bg-slate-100 light:border light:border-slate-200/50 rounded-xl px-2 py-1">
           <div className="flex items-center gap-x-3 min-w-0">
             <div
@@ -65,6 +94,23 @@ function FileDownloadCard({ props }) {
       </div>
     </div>
   );
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename || "download";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function isPreviewableImage(filename) {
+  const extension = filename?.split(".")?.pop()?.toLowerCase();
+  return ["png", "jpg", "jpeg", "svg", "gif", "webp"].includes(extension);
 }
 
 /**
@@ -112,6 +158,18 @@ function getFileDisplayInfo(filename) {
         badgeBg: "bg-green-100",
         badgeText: "text-green-700",
         fileType: "Spreadsheet",
+      };
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "svg":
+    case "gif":
+    case "webp":
+      return {
+        badge: "IMG",
+        badgeBg: "bg-cyan-100",
+        badgeText: "text-cyan-700",
+        fileType: "Image",
       };
     default:
       return {

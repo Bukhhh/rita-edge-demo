@@ -80,9 +80,9 @@ function ShowWorkspaceChat() {
       {!isMobile && <Sidebar />}
       <div
         style={{ height: isMobile ? "100%" : "calc(100% - 32px)" }}
-        className="transition-all duration-500 relative md:ml-[2px] md:mr-[16px] md:my-[16px] md:rounded-[16px] bg-theme-bg-secondary w-full h-full overflow-y-scroll"
+        className="transition-all duration-500 relative md:ml-[2px] md:mr-[16px] md:my-[16px] md:rounded-[16px] bg-theme-bg-secondary w-full h-full overflow-hidden flex flex-col"
       >
-        <div className="flex gap-x-10 pt-6 pb-4 ml-16 mr-8 border-b-2 border-white light:border-theme-chat-input-border border-opacity-10">
+        <div className="flex-none flex gap-x-10 pt-6 pb-4 ml-16 mr-8 border-b-2 border-white light:border-theme-chat-input-border border-opacity-10">
           <Link
             to={paths.workspace.chat(slug)}
             className="absolute top-2 left-2 md:top-4 md:left-4 transition-all duration-300 p-2 rounded-full text-white bg-theme-sidebar-footer-icon hover:bg-theme-sidebar-footer-icon-hover z-10"
@@ -116,7 +116,7 @@ function ShowWorkspaceChat() {
             to={paths.workspace.settings.agentConfig(slug)}
           />
         </div>
-        <div className="px-16 py-6">
+        <div className="flex-1 overflow-y-auto px-16 pt-6 pb-20">
           <TabContent slug={slug} workspace={workspace} />
         </div>
       </div>

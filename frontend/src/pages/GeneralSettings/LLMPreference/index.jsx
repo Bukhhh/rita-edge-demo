@@ -86,7 +86,7 @@ import LLMItem from "@/components/LLMSelection/LLMItem";
 import { CaretUpDown, MagnifyingGlass, X } from "@phosphor-icons/react";
 import CTAButton from "@/components/lib/CTAButton";
 
-export const AVAILABLE_LLM_PROVIDERS = [
+const ALL_LLM_PROVIDERS = [
   {
     name: "OpenAI",
     value: "openai",
@@ -427,6 +427,25 @@ export const AVAILABLE_LLM_PROVIDERS = [
   },
 ];
 
+const RITA_ALLOWED_LLM_PROVIDERS = ["groq", "ollama"];
+
+export const AVAILABLE_LLM_PROVIDERS = ALL_LLM_PROVIDERS.filter((provider) =>
+  RITA_ALLOWED_LLM_PROVIDERS.includes(provider.value)
+);
+
+export function ritaProviderIsEnabled(providerValue, settings = {}) {
+  if (providerValue === "groq") {
+    return settings?.RitaProviderControls?.groq_testing_provider ?? true;
+  }
+  return true;
+}
+
+export function availableRitaLLMProviders(settings = {}) {
+  return AVAILABLE_LLM_PROVIDERS.filter((provider) =>
+    ritaProviderIsEnabled(provider.value, settings)
+  );
+}
+
 export const LLM_PREFERENCE_CHANGED_EVENT = "llm-preference-changed";
 export default function GeneralLLMPreference() {
   const [saving, setSaving] = useState(false);
@@ -439,6 +458,7 @@ export default function GeneralLLMPreference() {
   const [searchMenuOpen, setSearchMenuOpen] = useState(false);
   const searchInputRef = useRef(null);
   const { t } = useTranslation();
+  const availableLLMs = availableRitaLLMProviders(settings);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -478,8 +498,15 @@ export default function GeneralLLMPreference() {
   useEffect(() => {
     async function fetchKeys() {
       const _settings = await System.keys();
+      const allowedProviders = availableRitaLLMProviders(_settings);
       setSettings(_settings);
-      setSelectedLLM(_settings?.LLMProvider);
+      const savedProvider = _settings?.LLMProvider;
+      const providerIsAllowed = allowedProviders.some(
+        (provider) => provider.value === savedProvider
+      );
+      setSelectedLLM(
+        providerIsAllowed ? savedProvider : allowedProviders[0]?.value
+      );
       setLoading(false);
     }
     fetchKeys();
@@ -501,15 +528,14 @@ export default function GeneralLLMPreference() {
   }, []);
 
   useEffect(() => {
-    const filtered = AVAILABLE_LLM_PROVIDERS.filter((llm) =>
+    const filtered = availableLLMs.filter((llm) =>
       llm.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setFilteredLLMs(filtered);
-  }, [searchQuery, selectedLLM]);
+  }, [searchQuery, selectedLLM, settings]);
 
-  const selectedLLMObject = AVAILABLE_LLM_PROVIDERS.find(
-    (llm) => llm.value === selectedLLM
-  );
+  const selectedLLMObject =
+    availableLLMs.find((llm) => llm.value === selectedLLM) ?? availableLLMs[0];
   return (
     <div className="w-screen h-screen overflow-hidden bg-theme-bg-container flex">
       <Sidebar />

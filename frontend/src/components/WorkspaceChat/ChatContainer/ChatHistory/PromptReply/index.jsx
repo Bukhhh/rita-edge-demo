@@ -10,6 +10,8 @@ import {
   THOUGHT_REGEX_OPEN,
   ThoughtChainComponent,
 } from "../ThoughtContainer";
+import useUser from "@/hooks/useUser";
+import ThinkingAnimation from "@/media/animations/thinking-animation.webm";
 
 const PromptReply = ({ uuid, reply, pending, error, sources = [] }) => {
   if (!reply && sources.length === 0 && !pending && !error) return null;
@@ -18,7 +20,7 @@ const PromptReply = ({ uuid, reply, pending, error, sources = [] }) => {
     return (
       <div className="flex justify-start w-full">
         <div className="py-4 pl-0 pr-4 flex flex-col md:max-w-[80%]">
-          <div className="mt-3 ml-1 dot-falling light:invert"></div>
+          <RitaProgressMessage />
         </div>
       </div>
     );
@@ -53,6 +55,8 @@ const PromptReply = ({ uuid, reply, pending, error, sources = [] }) => {
 };
 
 function RenderAssistantChatContent({ message, messageId }) {
+  const { user } = useUser();
+  const isAdmin = !user?.role || user.role === "admin";
   const contentRef = useRef("");
   const thoughtChainRef = useRef(null);
 
@@ -77,6 +81,7 @@ function RenderAssistantChatContent({ message, messageId }) {
 
   const thinking =
     message.match(THOUGHT_REGEX_OPEN) && !message.match(THOUGHT_REGEX_CLOSE);
+  if (thinking && !isAdmin) return <RitaProgressMessage />;
   if (thinking)
     return (
       <ThoughtChainComponent
@@ -88,7 +93,7 @@ function RenderAssistantChatContent({ message, messageId }) {
 
   return (
     <div className="flex flex-col gap-y-1">
-      {message.match(THOUGHT_REGEX_COMPLETE) && (
+      {isAdmin && message.match(THOUGHT_REGEX_COMPLETE) && (
         <ThoughtChainComponent
           ref={thoughtChainRef}
           content=""
@@ -101,6 +106,30 @@ function RenderAssistantChatContent({ message, messageId }) {
           __html: DOMPurify.sanitize(renderMarkdown(contentRef.current)),
         }}
       />
+    </div>
+  );
+}
+
+function RitaProgressMessage() {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-zinc-800 light:bg-slate-100 px-4 py-3 text-zinc-200 light:text-slate-700">
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="h-6 w-6 light:invert light:opacity-60"
+      >
+        <source src={ThinkingAnimation} type="video/webm" />
+      </video>
+      <div className="flex flex-col">
+        <span className="text-sm font-medium">
+          RITA is preparing your answer
+        </span>
+        <span className="text-xs text-zinc-400 light:text-slate-500">
+          Please wait a moment...
+        </span>
+      </div>
     </div>
   );
 }

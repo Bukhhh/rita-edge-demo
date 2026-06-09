@@ -49,16 +49,17 @@ const rechart = {
               },
               dataset: {
                 type: "string",
-                description: `Valid JSON in which each element is an object for Recharts API for the 'type' of chart defined WITHOUT new line characters. Strictly using this FORMAT and naming:
-{ "name": "a", "value": 12 }].
-Make sure field "name" always stays named "name". Instead of naming value field value in JSON, name it based on user metric and make it the same across every item.
-Make sure the format use double quotes and property names are string literals. Provide JSON data only.`,
+                description: `Valid JSON array where each element is an object containing chart-ready data. Use "name" for the primary category/time label, and use clear metric keys for numeric values. Example: [{ "name": "Jan", "revenue": 12000, "cost": 7000 }]. Use double quotes and JSON only.`,
+              },
+              option: {
+                type: "string",
+                description: `Optional valid ECharts option JSON for a polished visualization. Use this when the data needs multiple series, zooming, legends, better tooltips, or a dashboard-quality chart. Keep it JSON only with no functions. Prefer canvas-safe options: title, tooltip, legend, grid, xAxis, yAxis, series, dataset, dataZoom, radar, visualMap. For large datasets, add dataZoom and aggregate to top-N when needed.`,
               },
             },
             additionalProperties: false,
           },
           required: ["type", "title", "dataset"],
-          handler: async function ({ type, dataset, title }) {
+          handler: async function ({ type, dataset, title, option = null }) {
             try {
               if (this.tracker.isMarkedUnique(this.name)) {
                 this.super.handlerProps.log(
@@ -72,14 +73,16 @@ Make sure the format use double quotes and property names are string literals. P
                 this.super.introspect(
                   `${this.caller}: ${this.name} provided invalid JSON data - so we cant make a ${type} chart.`
                 );
-                return "Invalid JSON provided. Please only provide valid RechartJS JSON to generate a chart.";
+                return "Invalid JSON provided. Please only provide valid chart JSON to generate a chart.";
               }
 
+              const echartsOption = option ? safeJsonParse(option, null) : null;
               this.super.introspect(`${this.caller}: Rendering ${type} chart.`);
               this.super.socket.send("rechartVisualize", {
                 type,
                 dataset,
                 title,
+                ...(echartsOption ? { option } : {}),
               });
 
               this.super._replySpecialAttributes = {
@@ -89,6 +92,7 @@ Make sure the format use double quotes and property names are string literals. P
                     type,
                     dataset,
                     title,
+                    ...(echartsOption ? { option } : {}),
                     caption: additionalText,
                   }),
                 postSave: () => this.tracker.removeUniqueConstraint(this.name),

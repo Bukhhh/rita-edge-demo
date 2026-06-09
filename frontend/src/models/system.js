@@ -291,6 +291,21 @@ const System = {
         return { success: false, error: e.message };
       });
   },
+  uploadFavicon: async function (formData) {
+    return await fetch(`${API_BASE}/system/upload-favicon`, {
+      method: "POST",
+      body: formData,
+      headers: baseHeaders(),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Error uploading favicon.");
+        return { success: true, error: null };
+      })
+      .catch((e) => {
+        console.log(e);
+        return { success: false, error: e.message };
+      });
+  },
   fetchCustomFooterIcons: async function () {
     const cache = window.localStorage.getItem(this.cacheKeys.footerIcons);
     const { data, lastFetched } = cache
@@ -446,6 +461,26 @@ const System = {
         return { isCustomLogo: false, logoURL: null };
       });
   },
+  fetchFavicon: async function () {
+    return await fetch(`${fullApiUrl()}/system/favicon`, {
+      method: "GET",
+      cache: "no-cache",
+    })
+      .then(async (res) => {
+        if (res.ok && res.status !== 204) {
+          const blob = await res.blob();
+          return {
+            isCustomFavicon: true,
+            faviconURL: URL.createObjectURL(blob),
+          };
+        }
+        throw new Error("Failed to fetch favicon!");
+      })
+      .catch((e) => {
+        console.log(e);
+        return { isCustomFavicon: false, faviconURL: null };
+      });
+  },
   fetchPfp: async function (id) {
     return await fetch(`${API_BASE}/system/pfp/${id}`, {
       method: "GET",
@@ -491,6 +526,21 @@ const System = {
         return null;
       });
   },
+  isDefaultFavicon: async function () {
+    return await fetch(`${API_BASE}/system/is-default-favicon`, {
+      method: "GET",
+      cache: "no-cache",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to get is default favicon!");
+        return res.json();
+      })
+      .then((res) => res?.isDefaultFavicon)
+      .catch((e) => {
+        console.log(e);
+        return true;
+      });
+  },
   removeCustomLogo: async function () {
     return await fetch(`${API_BASE}/system/remove-logo`, {
       headers: baseHeaders(),
@@ -498,6 +548,19 @@ const System = {
       .then((res) => {
         if (res.ok) return { success: true, error: null };
         throw new Error("Error removing logo!");
+      })
+      .catch((e) => {
+        console.log(e);
+        return { success: false, error: e.message };
+      });
+  },
+  removeCustomFavicon: async function () {
+    return await fetch(`${API_BASE}/system/remove-favicon`, {
+      headers: baseHeaders(),
+    })
+      .then((res) => {
+        if (res.ok) return { success: true, error: null };
+        throw new Error("Error removing favicon!");
       })
       .catch((e) => {
         console.log(e);

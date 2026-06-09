@@ -1,50 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import AnythingLLMIcon from "@/media/logo/anything-llm-icon.png";
 import AgentLLMItem from "./AgentLLMItem";
-import { AVAILABLE_LLM_PROVIDERS } from "@/pages/GeneralSettings/LLMPreference";
+import {
+  AVAILABLE_LLM_PROVIDERS,
+  ritaProviderIsEnabled,
+} from "@/pages/GeneralSettings/LLMPreference";
 import { CaretUpDown, Gauge, MagnifyingGlass, X } from "@phosphor-icons/react";
 import AgentModelSelection from "../AgentModelSelection";
 import { useTranslation } from "react-i18next";
 
-const ENABLED_PROVIDERS = [
-  "openai",
-  "anthropic",
-  "lmstudio",
-  "ollama",
-  "localai",
-  "groq",
-  "azure",
-  "koboldcpp",
-  "togetherai",
-  "openrouter",
-  "novita",
-  "mistral",
-  "perplexity",
-  "textgenwebui",
-  "generic-openai",
-  "bedrock",
-  "fireworksai",
-  "deepseek",
-  "ppio",
-  "litellm",
-  "apipie",
-  "xai",
-  "nvidia-nim",
-  "gemini",
-  "moonshotai",
-  "cometapi",
-  "foundry",
-  "zai",
-  "giteeai",
-  "cohere",
-  "docker-model-runner",
-  "privatemode",
-  "sambanova",
-  "lemonade",
-  "minimax",
-  // TODO: More agent support.
-  // "huggingface"     // Can be done but already has issues with no-chat templated. Needs to be tested.
-];
+const ENABLED_PROVIDERS = ["ollama", "groq"];
 const WARN_PERFORMANCE = [
   "lmstudio",
   "koboldcpp",
@@ -64,22 +29,29 @@ const LLM_DEFAULT = {
   requiredConfig: [],
 };
 
-const LLMS = [
-  LLM_DEFAULT,
-  ...AVAILABLE_LLM_PROVIDERS.filter((llm) =>
-    ENABLED_PROVIDERS.includes(llm.value)
-  ),
-];
-
 export default function AgentLLMSelection({
   settings,
   workspace,
   setHasChanges,
 }) {
-  const [filteredLLMs, setFilteredLLMs] = useState([]);
-  const [selectedLLM, setSelectedLLM] = useState(
-    workspace?.agentProvider ?? "none"
+  const LLMS = useMemo(
+    () => [
+      LLM_DEFAULT,
+      ...AVAILABLE_LLM_PROVIDERS.filter(
+        (llm) =>
+          ENABLED_PROVIDERS.includes(llm.value) &&
+          ritaProviderIsEnabled(llm.value, settings)
+      ),
+    ],
+    [settings]
   );
+  const [filteredLLMs, setFilteredLLMs] = useState([]);
+  const [selectedLLM, setSelectedLLM] = useState(() => {
+    const savedProvider = workspace?.agentProvider ?? "none";
+    return LLMS.some((llm) => llm.value === savedProvider)
+      ? savedProvider
+      : "none";
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMenuOpen, setSearchMenuOpen] = useState(false);
   const searchInputRef = useRef(null);
@@ -105,9 +77,17 @@ export default function AgentLLMSelection({
       llm.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setFilteredLLMs(filtered);
-  }, [searchQuery, selectedLLM]);
+  }, [LLMS, searchQuery, selectedLLM]);
 
-  const selectedLLMObject = LLMS.find((llm) => llm.value === selectedLLM);
+  useEffect(() => {
+    if (!LLMS.some((llm) => llm.value === selectedLLM)) {
+      setSelectedLLM(LLM_DEFAULT.value);
+      setHasChanges(true);
+    }
+  }, [LLMS, selectedLLM, setHasChanges]);
+
+  const selectedLLMObject =
+    LLMS.find((llm) => llm.value === selectedLLM) ?? LLM_DEFAULT;
   return (
     <div className="border-b border-white/40 pb-8">
       {WARN_PERFORMANCE.includes(selectedLLM) && (

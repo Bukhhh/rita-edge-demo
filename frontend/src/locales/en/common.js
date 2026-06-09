@@ -97,7 +97,7 @@ const TRANSLATIONS = {
     "scheduled-jobs": "Scheduled Jobs",
     privacy: "Privacy & Data",
     "ai-providers": "AI Providers",
-    "agent-skills": "Agent Skills",
+    "agent-skills": "RITA Skills",
     "community-hub": {
       title: "Community Hub",
       trending: "Explore Trending",
@@ -409,6 +409,11 @@ const TRANSLATIONS = {
             description:
               "Create PDF documents from markdown or plain text with basic styling",
           },
+          "create-chart-pdf-report": {
+            title: "Chart PDF Reports",
+            description:
+              "Create PDF reports with chart images embedded directly into the document",
+          },
           "create-xlsx": {
             title: "Excel Spreadsheets",
             description:
@@ -418,6 +423,11 @@ const TRANSLATIONS = {
             title: "Word Documents",
             description:
               "Create Word documents with basic styling and formatting",
+          },
+          "create-matplotlib-chart": {
+            title: "Matplotlib Charts",
+            description:
+              "Run Python matplotlib scripts to create polished chart images",
           },
         },
       },
@@ -1335,8 +1345,8 @@ const TRANSLATIONS = {
     text_size_label: "Text Size",
     select_model: "Select Model",
     slash_commands: "Slash Commands",
-    agent_skills: "Agent Skills",
-    manage_agent_skills: "Manage Agent Skills",
+    agent_skills: "RITA Skills",
+    manage_agent_skills: "Manage RITA Skills",
     app_integrations: "App Integrations",
     custom_skills: "Custom Skills",
     agent_flows: "Agent Flows",
