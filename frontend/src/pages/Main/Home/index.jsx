@@ -196,7 +196,12 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
     );
   }, []);
 
-  async function submitMessage(message, attachments = [], displayText = null) {
+  async function submitMessage(
+    message,
+    attachments = [],
+    displayText = null,
+    selectedRitaAgentId = null
+  ) {
     if (!message || loading) return;
     setLoading(true);
     try {
@@ -222,7 +227,12 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
 
       sessionStorage.setItem(
         PENDING_HOME_MESSAGE,
-        JSON.stringify({ message, displayText, attachments })
+        JSON.stringify({
+          message,
+          displayText,
+          attachments,
+          selectedRitaAgentId,
+        })
       );
 
       if (targetThread) {
@@ -250,6 +260,7 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
     autoSubmit = false,
     attachments = null,
     writeMode = "replace",
+    selectedRitaAgentId = null,
   }) {
     if (autoSubmit) {
       if (writeMode === "append") {
@@ -261,7 +272,8 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
       submitMessage(
         text.trim(),
         Array.isArray(attachments) ? attachments : parseAttachments(),
-        displayText?.trim() || null
+        displayText?.trim() || null,
+        selectedRitaAgentId
       );
       return;
     }

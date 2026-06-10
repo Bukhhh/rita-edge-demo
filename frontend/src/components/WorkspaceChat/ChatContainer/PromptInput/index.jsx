@@ -63,7 +63,7 @@ export default function PromptInput({
 }) {
   const { t } = useTranslation();
   const { showAgentCommand = true } = workspace ?? {};
-  const { isDisabled } = useIsDisabled();
+  const { isDisabled } = useIsDisabled(attachments);
   const agentSessionActive = useIsAgentSessionActive();
   const [promptInput, setPromptInput] = useState("");
   const [showTools, setShowTools] = useState(false);
@@ -613,6 +613,7 @@ function ReportAgentBuilder({
     sendCommand({
       text: prompt,
       displayText: `Generate ${output.toUpperCase()} report with ${[...chartTypes].length} chart option(s): ${[...analysis].join(", ")}`,
+      selectedRitaAgentId: "rita-report-agent",
       autoSubmit: true,
     });
     setPromptInput("");
@@ -725,6 +726,7 @@ function GraphAgentBuilder({
     sendCommand({
       text: prompt,
       displayText: `Generate one ${chartType.replace("auto choose the best single chart", "auto-selected chart")} as ${output.toUpperCase()}`,
+      selectedRitaAgentId: "rita-graph-agent",
       autoSubmit: true,
     });
     setPromptInput("");
@@ -1115,8 +1117,15 @@ function SendPromptButton({ formRef, promptInput, isDisabled }) {
  * Handle event listeners to prevent the send button from being used
  * for whatever reason that may we may want to prevent the user from sending a message.
  */
-function useIsDisabled() {
+function useIsDisabled(attachments = []) {
   const [isDisabled, setIsDisabled] = useState(false);
+
+  useEffect(() => {
+    const hasProcessingAttachments = attachments.some(
+      (attachment) => attachment.status === "in_progress"
+    );
+    setIsDisabled(hasProcessingAttachments);
+  }, [attachments]);
 
   /**
    * Handle attachments processing and processed events
@@ -1126,7 +1135,12 @@ function useIsDisabled() {
   useEffect(() => {
     if (!window) return;
     const onProcessing = () => setIsDisabled(true);
-    const onProcessed = () => setIsDisabled(false);
+    const onProcessed = () => {
+      const hasProcessingAttachments = attachments.some(
+        (attachment) => attachment.status === "in_progress"
+      );
+      setIsDisabled(hasProcessingAttachments);
+    };
 
     window.addEventListener(ATTACHMENTS_PROCESSING_EVENT, onProcessing);
     window.addEventListener(ATTACHMENTS_PROCESSED_EVENT, onProcessed);
@@ -1135,7 +1149,7 @@ function useIsDisabled() {
       window.removeEventListener(ATTACHMENTS_PROCESSING_EVENT, onProcessing);
       window.removeEventListener(ATTACHMENTS_PROCESSED_EVENT, onProcessed);
     };
-  }, []);
+  }, [attachments]);
 
   return { isDisabled };
 }

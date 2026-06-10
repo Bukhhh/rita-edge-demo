@@ -91,7 +91,8 @@ const WorkspaceThread = {
     { workspaceSlug, threadSlug },
     message,
     handleChat,
-    attachments = []
+    attachments = [],
+    selectedRitaAgentId = null
   ) {
     const ctrl = new AbortController();
 
@@ -111,9 +112,7 @@ const WorkspaceThread = {
         body: JSON.stringify({
           message,
           attachments,
-          selectedRitaAgentId: window.localStorage.getItem(
-            "rita_selected_agent_id"
-          ),
+          selectedRitaAgentId,
         }),
         headers: baseHeaders(),
         signal: ctrl.signal,
@@ -126,13 +125,14 @@ const WorkspaceThread = {
             response.status < 500 &&
             response.status !== 429
           ) {
+            const error = await responseErrorMessage(response);
             handleChat({
               id: v4(),
               type: "abort",
               textResponse: null,
               sources: [],
               close: true,
-              error: `An error occurred while streaming response. Code ${response.status}`,
+              error,
             });
             ctrl.abort();
             throw new Error("Invalid Status code response.");
@@ -215,5 +215,13 @@ const WorkspaceThread = {
       });
   },
 };
+
+async function responseErrorMessage(response) {
+  try {
+    const data = await response.clone().json();
+    if (data?.error) return data.error;
+  } catch {}
+  return `An error occurred while streaming response. Code ${response.status}`;
+}
 
 export default WorkspaceThread;

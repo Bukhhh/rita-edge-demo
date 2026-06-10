@@ -135,6 +135,7 @@ export default function ChatContainer({
    * @param {boolean} options.autoSubmit - Determines if the text should be sent immediately or if it should be added to the message state (default: false)
    * @param {Object[]} options.history - The history of the chat prior to this message for overriding the current chat history
    * @param {Object[import("./DnDWrapper").Attachment]} options.attachments - The attachments to send to the LLM for this message
+   * @param {string|null} options.selectedRitaAgentId - Explicit RITA agent id for builder/agent requests only
    * @param {'replace' | 'append' | 'prepend'} options.writeMode - Replace current text or append to existing text (default: replace)
    * @returns {void}
    */
@@ -145,6 +146,7 @@ export default function ChatContainer({
     attachments = null,
     writeMode = "replace",
     displayText = null,
+    selectedRitaAgentId = null,
   } = {}) => {
     // If we are not auto-submitting, we can just emit the text to the prompt input.
     if (!autoSubmit) {
@@ -195,6 +197,7 @@ export default function ChatContainer({
           displayText: displayText || text,
           attachments: visibleAttachments,
           promptAttachments,
+          selectedRitaAgentId,
           animate: true,
         },
       ];
@@ -214,6 +217,7 @@ export default function ChatContainer({
           displayText: displayText || text,
           attachments: visibleAttachments,
           promptAttachments,
+          selectedRitaAgentId,
           animate: true,
         },
       ];
@@ -236,6 +240,7 @@ export default function ChatContainer({
           text: pending.message,
           attachments: pending.attachments || [],
           displayText: pending.displayText || null,
+          selectedRitaAgentId: pending.selectedRitaAgentId || null,
           autoSubmit: true,
         });
       }, 100);
@@ -297,6 +302,7 @@ export default function ChatContainer({
             setSocketId
           ),
         attachments,
+        selectedRitaAgentId: promptMessage?.selectedRitaAgentId || null,
       });
       return;
     }

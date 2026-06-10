@@ -125,22 +125,31 @@ const Workspace = {
     prompt,
     chatHandler,
     attachments = [],
+    selectedRitaAgentId = null,
   }) {
     if (!!threadSlug)
       return this.threads.streamChat(
         { workspaceSlug, threadSlug },
         prompt,
         chatHandler,
-        attachments
+        attachments,
+        selectedRitaAgentId
       );
     return this.streamChat(
       { slug: workspaceSlug },
       prompt,
       chatHandler,
-      attachments
+      attachments,
+      selectedRitaAgentId
     );
   },
-  streamChat: async function ({ slug }, message, handleChat, attachments = []) {
+  streamChat: async function (
+    { slug },
+    message,
+    handleChat,
+    attachments = [],
+    selectedRitaAgentId = null
+  ) {
     const ctrl = new AbortController();
 
     // Listen for the ABORT_STREAM_EVENT key to be emitted by the client
@@ -157,9 +166,7 @@ const Workspace = {
       body: JSON.stringify({
         message,
         attachments,
-        selectedRitaAgentId: window.localStorage.getItem(
-          "rita_selected_agent_id"
-        ),
+        selectedRitaAgentId,
       }),
       headers: baseHeaders(),
       signal: ctrl.signal,
@@ -172,13 +179,14 @@ const Workspace = {
           response.status < 500 &&
           response.status !== 429
         ) {
+          const error = await responseErrorMessage(response);
           handleChat({
             id: v4(),
             type: "abort",
             textResponse: null,
             sources: [],
             close: true,
-            error: `An error occurred while streaming response. Code ${response.status}`,
+            error,
           });
           ctrl.abort();
           throw new Error("Invalid Status code response.");
@@ -607,5 +615,13 @@ const Workspace = {
 
   threads: WorkspaceThread,
 };
+
+async function responseErrorMessage(response) {
+  try {
+    const data = await response.clone().json();
+    if (data?.error) return data.error;
+  } catch {}
+  return `An error occurred while streaming response. Code ${response.status}`;
+}
 
 export default Workspace;
