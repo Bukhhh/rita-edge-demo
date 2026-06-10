@@ -254,31 +254,52 @@ export default function ChatContainer({
       const remHistory = chatHistory.length > 0 ? chatHistory.slice(0, -1) : [];
       var _chatHistory = [...remHistory];
 
-      // Override hook for new messages to now go to agents until the connection closes
+      // Override hook for new messages to now go to agents until the connection closes.
+      // If the browser still has a stale/closed agent socket reference, clear it and
+      // let this message continue through the normal chat path.
       if (!!websocket) {
-        if (!promptMessage || !promptMessage?.userMessage) return false;
-        const attachments =
-          promptMessage?.promptAttachments ??
-          promptMessage?.attachments ??
-          parseAttachments();
-        window.dispatchEvent(new CustomEvent(CLEAR_ATTACHMENTS_EVENT));
-        websocket.send(
-          JSON.stringify({
-            type: "awaitingFeedback",
-            feedback: promptMessage?.userMessage,
-            attachments,
-          })
-        );
+        if (websocket.readyState === WebSocket.OPEN) {
+          if (!promptMessage || !promptMessage?.userMessage) {
+            setLoadingResponse(false);
+            return false;
+          }
 
-        // /reset during an active agent session should end the session AND
-        // clear the chat in a single action. The send above triggers the
-        // server to abort the agent and close the socket; fall through to the
-        // /reset flow below which resets memory + clears chat history.
-        if (promptMessage.userMessage.trim() !== "/reset") return;
-        pendingResetRef.current = true;
+          const attachments =
+            promptMessage?.promptAttachments ??
+            promptMessage?.attachments ??
+            parseAttachments();
+          window.dispatchEvent(new CustomEvent(CLEAR_ATTACHMENTS_EVENT));
+
+          try {
+            websocket.send(
+              JSON.stringify({
+                type: "awaitingFeedback",
+                feedback: promptMessage?.userMessage,
+                attachments,
+              })
+            );
+
+            // /reset during an active agent session should end the session AND
+            // clear the chat in a single action. The send above triggers the
+            // server to abort the agent and close the socket; fall through to the
+            // /reset flow below which resets memory + clears chat history.
+            if (promptMessage.userMessage.trim() !== "/reset") return;
+            pendingResetRef.current = true;
+          } catch {
+            // Fall through to normal chat after clearing the bad socket below.
+          }
+        }
+
+        setAgentSessionActive(false);
+        window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
+        setWebsocket(null);
+        setSocketId(null);
       }
 
-      if (!promptMessage || !promptMessage?.userMessage) return false;
+      if (!promptMessage || !promptMessage?.userMessage) {
+        setLoadingResponse(false);
+        return false;
+      }
 
       // If running and edit or regeneration, this history will already have attachments
       // so no need to parse the current state.

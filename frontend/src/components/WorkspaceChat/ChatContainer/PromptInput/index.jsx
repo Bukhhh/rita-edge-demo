@@ -17,11 +17,7 @@ import SpeechToText from "./SpeechToText";
 import { Tooltip } from "react-tooltip";
 import AttachmentManager from "./Attachments";
 import AttachItem from "./AttachItem";
-import {
-  ATTACHMENTS_PROCESSED_EVENT,
-  ATTACHMENTS_PROCESSING_EVENT,
-  PASTE_ATTACHMENT_EVENT,
-} from "../DnDWrapper";
+import { PASTE_ATTACHMENT_EVENT } from "../DnDWrapper";
 import useTextSize from "@/hooks/useTextSize";
 import { useTranslation } from "react-i18next";
 import Appearance from "@/models/appearance";
@@ -1118,38 +1114,9 @@ function SendPromptButton({ formRef, promptInput, isDisabled }) {
  * for whatever reason that may we may want to prevent the user from sending a message.
  */
 function useIsDisabled(attachments = []) {
-  const [isDisabled, setIsDisabled] = useState(false);
-
-  useEffect(() => {
-    const hasProcessingAttachments = attachments.some(
-      (attachment) => attachment.status === "in_progress"
-    );
-    setIsDisabled(hasProcessingAttachments);
-  }, [attachments]);
-
-  /**
-   * Handle attachments processing and processed events
-   * to prevent the send button from being clicked when attachments are processing
-   * or else the query may not have relevant context since RAG is not yet ready.
-   */
-  useEffect(() => {
-    if (!window) return;
-    const onProcessing = () => setIsDisabled(true);
-    const onProcessed = () => {
-      const hasProcessingAttachments = attachments.some(
-        (attachment) => attachment.status === "in_progress"
-      );
-      setIsDisabled(hasProcessingAttachments);
-    };
-
-    window.addEventListener(ATTACHMENTS_PROCESSING_EVENT, onProcessing);
-    window.addEventListener(ATTACHMENTS_PROCESSED_EVENT, onProcessed);
-
-    return () => {
-      window.removeEventListener(ATTACHMENTS_PROCESSING_EVENT, onProcessing);
-      window.removeEventListener(ATTACHMENTS_PROCESSED_EVENT, onProcessed);
-    };
-  }, [attachments]);
+  const isDisabled = attachments.some(
+    (attachment) => attachment.status === "in_progress"
+  );
 
   return { isDisabled };
 }
