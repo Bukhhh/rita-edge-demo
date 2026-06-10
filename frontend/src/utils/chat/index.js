@@ -120,6 +120,7 @@ export default function handleChat(
           chatId,
           metrics,
         };
+        if (close) setLoadingResponse(false);
       }
       _chatHistory[chatIdx] = updatedHistory;
     } else {
@@ -135,6 +136,7 @@ export default function handleChat(
         chatId,
         metrics,
       });
+      if (close) setLoadingResponse(false);
     }
     setChatHistory([..._chatHistory]);
   } else if (type === "agentInitWebsocketConnection") {

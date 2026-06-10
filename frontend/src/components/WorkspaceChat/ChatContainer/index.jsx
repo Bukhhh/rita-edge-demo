@@ -46,10 +46,12 @@ export default function ChatContainer({
   const { t } = useTranslation();
   const [loadingResponse, setLoadingResponse] = useState(false);
   const [chatHistory, setChatHistory] = useState(knownHistory);
+  const [responseTrigger, setResponseTrigger] = useState(0);
   const [socketId, setSocketId] = useState(null);
   const [websocket, setWebsocket] = useState(null);
   const { files, parseAttachments } = useContext(DndUploaderContext);
   const { chatHistoryRef } = useChatContainerQuickScroll();
+  const pendingPromptRef = useRef(null);
   const pendingMessageChecked = useRef(false);
   const pendingResetRef = useRef(false);
 
@@ -81,6 +83,14 @@ export default function ChatContainer({
     // PromptInput remounts (empty→chat transition), it won't restore stale text
     clearPromptInputDraft(threadSlug ?? workspace.slug);
 
+    const pendingAssistantMessage = {
+      content: "",
+      role: "assistant",
+      pending: true,
+      userMessage: currentMessage,
+      animate: true,
+      promptAttachments: parseAttachments(),
+    };
     const prevChatHistory = [
       ...chatHistory,
       {
@@ -88,23 +98,21 @@ export default function ChatContainer({
         role: "user",
         attachments: visibleAttachmentsFromFiles(files, parseAttachments()),
       },
-      {
-        content: "",
-        role: "assistant",
-        pending: true,
-        userMessage: currentMessage,
-        animate: true,
-        promptAttachments: parseAttachments(),
-      },
+      pendingAssistantMessage,
     ];
 
     if (listening) {
       // Stop the mic if the send button is clicked
       endSTTSession();
     }
+    pendingPromptRef.current = {
+      promptMessage: pendingAssistantMessage,
+      history: prevChatHistory.slice(0, -1),
+    };
     setChatHistory(prevChatHistory);
     setMessageEmit("");
     setLoadingResponse(true);
+    setResponseTrigger((value) => value + 1);
   };
 
   function endSTTSession() {
@@ -187,21 +195,34 @@ export default function ChatContainer({
     let prevChatHistory;
     if (history.length > 0) {
       // use pre-determined history chain.
-      prevChatHistory = [
-        ...history,
-        {
-          content: "",
-          role: "assistant",
-          pending: true,
-          userMessage: text,
-          displayText: displayText || text,
-          attachments: visibleAttachments,
-          promptAttachments,
-          selectedRitaAgentId,
-          animate: true,
-        },
-      ];
+      const pendingAssistantMessage = {
+        content: "",
+        role: "assistant",
+        pending: true,
+        userMessage: text,
+        displayText: displayText || text,
+        attachments: visibleAttachments,
+        promptAttachments,
+        selectedRitaAgentId,
+        animate: true,
+      };
+      prevChatHistory = [...history, pendingAssistantMessage];
+      pendingPromptRef.current = {
+        promptMessage: pendingAssistantMessage,
+        history,
+      };
     } else {
+      const pendingAssistantMessage = {
+        content: "",
+        role: "assistant",
+        pending: true,
+        userMessage: text,
+        displayText: displayText || text,
+        attachments: visibleAttachments,
+        promptAttachments,
+        selectedRitaAgentId,
+        animate: true,
+      };
       prevChatHistory = [
         ...chatHistory,
         {
@@ -209,23 +230,18 @@ export default function ChatContainer({
           role: "user",
           attachments: visibleAttachments,
         },
-        {
-          content: "",
-          role: "assistant",
-          pending: true,
-          userMessage: text,
-          displayText: displayText || text,
-          attachments: visibleAttachments,
-          promptAttachments,
-          selectedRitaAgentId,
-          animate: true,
-        },
+        pendingAssistantMessage,
       ];
+      pendingPromptRef.current = {
+        promptMessage: pendingAssistantMessage,
+        history: prevChatHistory.slice(0, -1),
+      };
     }
 
     setChatHistory(prevChatHistory);
     setMessageEmit("");
     setLoadingResponse(true);
+    setResponseTrigger((value) => value + 1);
   };
 
   useEffect(() => {
@@ -249,9 +265,10 @@ export default function ChatContainer({
 
   useEffect(() => {
     async function fetchReply() {
-      const promptMessage =
-        chatHistory.length > 0 ? chatHistory[chatHistory.length - 1] : null;
-      const remHistory = chatHistory.length > 0 ? chatHistory.slice(0, -1) : [];
+      const pendingPrompt = pendingPromptRef.current;
+      pendingPromptRef.current = null;
+      const promptMessage = pendingPrompt?.promptMessage ?? null;
+      const remHistory = pendingPrompt?.history ?? [];
       var _chatHistory = [...remHistory];
 
       // Override hook for new messages to now go to agents until the connection closes.
@@ -327,8 +344,8 @@ export default function ChatContainer({
       });
       return;
     }
-    loadingResponse === true && fetchReply();
-  }, [loadingResponse, chatHistory, workspace]);
+    responseTrigger > 0 && fetchReply();
+  }, [responseTrigger]);
 
   // TODO: Simplify this WSS stuff
   useEffect(() => {
