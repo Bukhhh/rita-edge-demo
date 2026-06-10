@@ -86,7 +86,7 @@ export default function ChatContainer({
       {
         content: currentMessage,
         role: "user",
-        attachments: parseAttachments(),
+        attachments: visibleAttachmentsFromFiles(files, parseAttachments()),
       },
       {
         content: "",
@@ -94,6 +94,7 @@ export default function ChatContainer({
         pending: true,
         userMessage: currentMessage,
         animate: true,
+        promptAttachments: parseAttachments(),
       },
     ];
 
@@ -169,6 +170,10 @@ export default function ChatContainer({
     const promptAttachments = Array.isArray(attachments)
       ? attachments
       : parseAttachments();
+    const visibleAttachments = visibleAttachmentsFromFiles(
+      files,
+      () => promptAttachments
+    );
 
     // Clear the localStorage draft so that if the PromptInput remounts
     // (e.g. /reset causing empty→chat or chat→empty transitions),
@@ -188,7 +193,8 @@ export default function ChatContainer({
           pending: true,
           userMessage: text,
           displayText: displayText || text,
-          attachments: promptAttachments,
+          attachments: visibleAttachments,
+          promptAttachments,
           animate: true,
         },
       ];
@@ -198,7 +204,7 @@ export default function ChatContainer({
         {
           content: displayText || text,
           role: "user",
-          attachments: promptAttachments,
+          attachments: visibleAttachments,
         },
         {
           content: "",
@@ -206,7 +212,8 @@ export default function ChatContainer({
           pending: true,
           userMessage: text,
           displayText: displayText || text,
-          attachments: promptAttachments,
+          attachments: visibleAttachments,
+          promptAttachments,
           animate: true,
         },
       ];
@@ -228,6 +235,7 @@ export default function ChatContainer({
         sendCommand({
           text: pending.message,
           attachments: pending.attachments || [],
+          displayText: pending.displayText || null,
           autoSubmit: true,
         });
       }, 100);
@@ -244,7 +252,10 @@ export default function ChatContainer({
       // Override hook for new messages to now go to agents until the connection closes
       if (!!websocket) {
         if (!promptMessage || !promptMessage?.userMessage) return false;
-        const attachments = promptMessage?.attachments ?? parseAttachments();
+        const attachments =
+          promptMessage?.promptAttachments ??
+          promptMessage?.attachments ??
+          parseAttachments();
         window.dispatchEvent(new CustomEvent(CLEAR_ATTACHMENTS_EVENT));
         websocket.send(
           JSON.stringify({
@@ -266,7 +277,10 @@ export default function ChatContainer({
 
       // If running and edit or regeneration, this history will already have attachments
       // so no need to parse the current state.
-      const attachments = promptMessage?.attachments ?? parseAttachments();
+      const attachments =
+        promptMessage?.promptAttachments ??
+        promptMessage?.attachments ??
+        parseAttachments();
       window.dispatchEvent(new CustomEvent(CLEAR_ATTACHMENTS_EVENT));
 
       await Workspace.multiplexStream({
@@ -481,4 +495,21 @@ export default function ChatContainer({
       </div>
     </ChatSidebarProvider>
   );
+}
+
+function visibleAttachmentsFromFiles(
+  files = [],
+  fallbackAttachments = () => []
+) {
+  const visibleFiles = files.map((item) => ({
+    uid: item.uid,
+    name: item.file?.name,
+    mime: item.file?.type,
+    contentString: item.contentString,
+    status: item.status,
+    type: item.type,
+  }));
+
+  if (visibleFiles.length > 0) return visibleFiles;
+  return fallbackAttachments();
 }

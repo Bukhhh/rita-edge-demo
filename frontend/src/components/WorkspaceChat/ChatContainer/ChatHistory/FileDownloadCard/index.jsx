@@ -12,7 +12,7 @@ function FileDownloadCard({ props }) {
   const { badge, badgeBg, badgeText, fileType } = getFileDisplayInfo(filename);
   const [downloading, setDownloading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const canPreview = isPreviewableImage(filename);
+  const canPreview = isPreviewableImage(filename) || isPreviewablePdf(filename);
 
   useEffect(() => {
     if (!canPreview || !storageFilename) return;
@@ -53,11 +53,18 @@ function FileDownloadCard({ props }) {
   return (
     <div className="flex justify-center w-full my-2">
       <div className="w-full max-w-[750px] mr-4">
-        {previewUrl && (
+        {previewUrl && isPreviewableImage(filename) && (
           <img
             src={previewUrl}
             alt={filename || "Generated image"}
             className="mb-2 w-full max-h-[520px] object-contain rounded-xl bg-zinc-800 light:bg-slate-100 light:border light:border-slate-200/50"
+          />
+        )}
+        {previewUrl && isPreviewablePdf(filename) && (
+          <iframe
+            src={previewUrl}
+            title={filename || "Generated PDF preview"}
+            className="mb-2 h-[520px] w-full rounded-xl bg-white light:border light:border-slate-200/50"
           />
         )}
         <div className="flex items-center justify-between bg-zinc-800 light:bg-slate-100 light:border light:border-slate-200/50 rounded-xl px-2 py-1">
@@ -111,6 +118,10 @@ function downloadBlob(blob, filename) {
 function isPreviewableImage(filename) {
   const extension = filename?.split(".")?.pop()?.toLowerCase();
   return ["png", "jpg", "jpeg", "svg", "gif", "webp"].includes(extension);
+}
+
+function isPreviewablePdf(filename) {
+  return filename?.split(".")?.pop()?.toLowerCase() === "pdf";
 }
 
 /**

@@ -196,7 +196,7 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
     );
   }, []);
 
-  async function submitMessage(message, attachments = []) {
+  async function submitMessage(message, attachments = [], displayText = null) {
     if (!message || loading) return;
     setLoading(true);
     try {
@@ -222,7 +222,7 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
 
       sessionStorage.setItem(
         PENDING_HOME_MESSAGE,
-        JSON.stringify({ message, attachments })
+        JSON.stringify({ message, displayText, attachments })
       );
 
       if (targetThread) {
@@ -246,6 +246,7 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
 
   function sendCommand({
     text = "",
+    displayText = null,
     autoSubmit = false,
     attachments = null,
     writeMode = "replace",
@@ -259,7 +260,8 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
       if (!text.trim()) return;
       submitMessage(
         text.trim(),
-        Array.isArray(attachments) ? attachments : parseAttachments()
+        Array.isArray(attachments) ? attachments : parseAttachments(),
+        displayText?.trim() || null
       );
       return;
     }

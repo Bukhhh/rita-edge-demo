@@ -14,7 +14,7 @@ export default function StatusResponse({ messages = [], isThinking = false }) {
 
   if (!isAdmin) {
     if (!isThinking) return null;
-    return <RitaAgentProgressMessage />;
+    return <RitaAgentProgressMessage thought={currentThought?.content} />;
   }
 
   function handleExpandClick() {
@@ -106,7 +106,7 @@ export default function StatusResponse({ messages = [], isThinking = false }) {
   );
 }
 
-function RitaAgentProgressMessage() {
+function RitaAgentProgressMessage({ thought = "" }) {
   return (
     <div className="flex justify-start w-full pr-4">
       <div className="rounded-2xl bg-zinc-800 light:bg-slate-100 px-4 py-3 flex items-center gap-3 text-zinc-200 light:text-slate-700">
@@ -122,10 +122,39 @@ function RitaAgentProgressMessage() {
         <div className="flex flex-col">
           <span className="text-sm font-medium">RITA is working on it</span>
           <span className="text-xs text-zinc-400 light:text-slate-500">
-            Preparing the result for you...
+            {progressLabelFromThought(thought)}
           </span>
         </div>
       </div>
     </div>
   );
+}
+
+function progressLabelFromThought(thought = "") {
+  const text = thought.toLowerCase();
+  if (
+    text.includes("attached") ||
+    text.includes("document") ||
+    text.includes("context") ||
+    text.includes("rag")
+  ) {
+    return "Reading the uploaded data...";
+  }
+  if (
+    text.includes("chart") ||
+    text.includes("matplotlib") ||
+    text.includes("graph")
+  ) {
+    return "Building the chart...";
+  }
+  if (
+    text.includes("pdf") ||
+    text.includes("docx") ||
+    text.includes("file") ||
+    text.includes("report")
+  ) {
+    return "Preparing the report preview...";
+  }
+  if (text.includes("tool")) return "Running the selected RITA skill...";
+  return "Analysing your request...";
 }

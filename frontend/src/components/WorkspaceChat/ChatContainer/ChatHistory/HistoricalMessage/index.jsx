@@ -44,6 +44,9 @@ const HistoricalMessage = ({
   // on every render and remount the subtree, wiping TruncatableContent state.
   const [uuid] = useState(() => uuidProp ?? v4());
   const { t } = useTranslation();
+  const { user } = useUser();
+  const visibleMessage =
+    role === "user" ? maskRitaInternalPrompt(message, user) : message;
   const { isEditing } = useEditMessage({ chatId, role });
   const { isDeleted, completeDelete, onEndAnimation } = useWatchDeleteMessage({
     chatId,
@@ -105,7 +108,7 @@ const HistoricalMessage = ({
             <TruncatableContent>
               <RenderChatContent
                 role={role}
-                message={message}
+                message={visibleMessage}
                 messageId={uuid}
               />
               <ChatAttachments attachments={attachments} />
@@ -219,22 +222,94 @@ function ChatAttachments({ attachments = [] }) {
   if (!attachments.length) return null;
   return (
     <div className="flex flex-wrap gap-4 mt-4">
-      {attachments.map((item, index) => (
-        <button
-          type="button"
-          key={item.name}
-          onClick={() => openImageLightbox(attachments, index)}
-          className="p-0 border-none bg-transparent cursor-pointer hover:opacity-80 transition-opacity"
-        >
-          <img
-            alt={`Attachment: ${item.name}`}
-            src={item.contentString}
-            className="w-[120px] h-[120px] object-cover rounded-lg"
-          />
-        </button>
-      ))}
+      {attachments.map((item) => {
+        if (item.contentString) {
+          const imageAttachments = attachments.filter(
+            (att) => att.contentString
+          );
+          const imageIndex = imageAttachments.findIndex(
+            (att) => (att.uid || att.name) === (item.uid || item.name)
+          );
+          return (
+            <button
+              type="button"
+              key={item.name}
+              onClick={() => openImageLightbox(imageAttachments, imageIndex)}
+              className="p-0 border-none bg-transparent cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              <img
+                alt={`Attachment: ${item.name}`}
+                src={item.contentString}
+                className="w-[120px] h-[120px] object-cover rounded-lg"
+              />
+            </button>
+          );
+        }
+
+        return (
+          <div
+            key={item.uid || item.name}
+            className="flex items-center gap-2 rounded-lg bg-zinc-700/60 light:bg-white light:border light:border-slate-200 px-3 py-2 max-w-[260px]"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-200 text-[10px] font-bold text-slate-700">
+              {fileBadge(item.name)}
+            </span>
+            <div className="min-w-0">
+              <p className="m-0 truncate text-xs font-semibold text-white light:text-slate-900">
+                {item.name || "Attached file"}
+              </p>
+              <p className="m-0 text-[10px] text-zinc-300 light:text-slate-500">
+                {attachmentStatusLabel(item.status)}
+              </p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+function maskRitaInternalPrompt(message = "", user = null) {
+  if (!user || user.role === "admin") return message;
+  if (message.startsWith("RITA Report Builder request.")) {
+    return summarizeRitaRequest(message, "RITA Report Builder");
+  }
+  if (message.startsWith("RITA Graph Builder request.")) {
+    return summarizeRitaRequest(message, "RITA Graph Builder");
+  }
+  return message;
+}
+
+function summarizeRitaRequest(message, title) {
+  const analyse = message.match(/Analyse: ([^\n]+)\./)?.[1];
+  const focus = message.match(/Data\/focus to analyse: ([^\n]+)\./)?.[1];
+  const charts =
+    message.match(/Preferred charts: ([^\n]+)\./)?.[1] ||
+    message.match(/Chart type: ([^\n]+)\./)?.[1];
+  const output = message.match(/Output: ([^\n]+)\./)?.[1];
+
+  return [
+    `${title} request`,
+    analyse ? `Analyse: ${analyse}` : null,
+    focus ? `Focus: ${focus}` : null,
+    charts ? `Chart: ${charts}` : null,
+    output ? `Output: ${output}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function fileBadge(filename = "") {
+  const extension = filename.split(".").pop()?.toUpperCase() || "FILE";
+  return extension.slice(0, 4);
+}
+
+function attachmentStatusLabel(status) {
+  if (status === "embedded") return "Embedded in workspace";
+  if (status === "added_context") return "Added as chat context";
+  if (status === "in_progress") return "Processing";
+  if (status === "failed") return "Could not process";
+  return "Attached";
 }
 
 function TruncatableContent({ children }) {
