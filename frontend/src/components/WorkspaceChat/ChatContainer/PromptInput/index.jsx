@@ -803,6 +803,7 @@ function buildReportAgentPrompt({ analysis, chartTypes, output, extra }) {
     "RITA Report Builder request.",
     "Use the uploaded/attached document, parsed file context, or workspace context.",
     "If <attached_documents> context is present in the conversation, treat it as the uploaded source data and do not ask the user to upload again.",
+    "If the user recently embedded a file into the workspace, use RAG/long-term memory or workspace context before asking them to upload again.",
     `Analyse: ${analysis.join(", ")}.`,
     `Preferred charts: ${chartTypes.join(", ")}.`,
     "Generate up to three charts in the report. Each chart should cover a different useful angle and should not duplicate the same insight.",
@@ -810,7 +811,7 @@ function buildReportAgentPrompt({ analysis, chartTypes, output, extra }) {
     outputInstructions,
     "Write for non-technical users. Keep the report structured, clear, and management-friendly.",
     "If the source document is unclear but context exists, make reasonable assumptions and state them briefly.",
-    "Only ask the user to upload data when there is no attached document, no parsed file context, no workspace context, and no user-provided data.",
+    "Only ask the user to upload data when there is no attached document, no parsed file context, no embedded workspace context, no workspace context, and no user-provided data.",
     extra ? `Additional user notes: ${extra}` : null,
   ]
     .filter(Boolean)
@@ -822,6 +823,7 @@ function buildGraphAgentPrompt({ focus, chartType, output, extra }) {
     "RITA Graph Builder request.",
     "Use the uploaded/attached document, parsed file context, workspace context, or user-provided data.",
     "If <attached_documents> context is present in the conversation, treat it as the uploaded source data and do not ask the user to upload again.",
+    "If the user recently embedded a file into the workspace, use RAG/long-term memory or workspace context before asking them to upload again.",
     "Create exactly one graph only. Do not create multiple charts.",
     `Data/focus to analyse: ${focus}.`,
     `Chart type: ${chartType}.`,
@@ -830,7 +832,7 @@ function buildGraphAgentPrompt({ focus, chartType, output, extra }) {
       ? "Use the matplotlib PNG chart tool where possible."
       : "Create a one-chart PDF output where possible.",
     "Include a short plain-language insight explaining the graph.",
-    "Only ask the user to upload data when there is no attached document, no parsed file context, no workspace context, and no user-provided data.",
+    "Only ask the user to upload data when there is no attached document, no parsed file context, no embedded workspace context, no workspace context, and no user-provided data.",
     extra ? `Additional user notes: ${extra}` : null,
   ]
     .filter(Boolean)

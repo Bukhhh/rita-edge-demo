@@ -247,6 +247,7 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
   function sendCommand({
     text = "",
     autoSubmit = false,
+    attachments = null,
     writeMode = "replace",
   }) {
     if (autoSubmit) {
@@ -256,7 +257,10 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
         text = currentText + text;
       }
       if (!text.trim()) return;
-      submitMessage(text.trim());
+      submitMessage(
+        text.trim(),
+        Array.isArray(attachments) ? attachments : parseAttachments()
+      );
       return;
     }
     window.dispatchEvent(
