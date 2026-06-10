@@ -784,16 +784,15 @@ const TRANSLATIONS = {
   customization: {
     interface: {
       title: "UI Preferences",
-      description: "Set your UI preferences for AnythingLLM.",
+      description: "Set your UI preferences for rita-Edge.",
     },
     branding: {
       title: "Branding & Whitelabeling",
-      description:
-        "White-label your AnythingLLM instance with custom branding.",
+      description: "White-label your rita-Edge instance with custom branding.",
     },
     chat: {
       title: "Chat",
-      description: "Set your chat preferences for AnythingLLM.",
+      description: "Set your chat preferences for rita-Edge.",
       auto_submit: {
         title: "Auto-Submit Speech Input",
         description:
@@ -830,7 +829,7 @@ const TRANSLATIONS = {
       "display-language": {
         title: "Display Language",
         description:
-          "Select the preferred language to render AnythingLLM's UI in - when translations are available.",
+          "Select the preferred language to render rita-Edge's UI in - when translations are available.",
       },
       logo: {
         title: "Brand Logo",
