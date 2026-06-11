@@ -4,6 +4,7 @@ import { CaretDown } from "@phosphor-icons/react";
 import AgentAnimation from "@/media/animations/agent-animation.webm";
 import AgentStatic from "@/media/animations/agent-static.png";
 import useUser from "@/hooks/useUser";
+import RitaProgressCard from "../RitaProgressCard";
 
 export default function StatusResponse({ messages = [], isThinking = false }) {
   const { user } = useUser();
@@ -109,52 +110,7 @@ export default function StatusResponse({ messages = [], isThinking = false }) {
 function RitaAgentProgressMessage({ thought = "" }) {
   return (
     <div className="flex justify-start w-full pr-4">
-      <div className="rounded-2xl bg-zinc-800 light:bg-slate-100 px-4 py-3 flex items-center gap-3 text-zinc-200 light:text-slate-700">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="h-6 w-6 scale-[135%] light:invert light:opacity-60"
-        >
-          <source src={AgentAnimation} type="video/webm" />
-        </video>
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">RITA is working on it</span>
-          <span className="text-xs text-zinc-400 light:text-slate-500">
-            {progressLabelFromThought(thought)}
-          </span>
-        </div>
-      </div>
+      <RitaProgressCard statusText={thought} />
     </div>
   );
-}
-
-function progressLabelFromThought(thought = "") {
-  const text = thought.toLowerCase();
-  if (
-    text.includes("attached") ||
-    text.includes("document") ||
-    text.includes("context") ||
-    text.includes("rag")
-  ) {
-    return "Reading the uploaded data...";
-  }
-  if (
-    text.includes("chart") ||
-    text.includes("matplotlib") ||
-    text.includes("graph")
-  ) {
-    return "Building the chart...";
-  }
-  if (
-    text.includes("pdf") ||
-    text.includes("docx") ||
-    text.includes("file") ||
-    text.includes("report")
-  ) {
-    return "Preparing the report preview...";
-  }
-  if (text.includes("tool")) return "Running the selected RITA skill...";
-  return "Analysing your request...";
 }

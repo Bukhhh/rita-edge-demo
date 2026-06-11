@@ -11,16 +11,27 @@ import {
   ThoughtChainComponent,
 } from "../ThoughtContainer";
 import useUser from "@/hooks/useUser";
-import ThinkingAnimation from "@/media/animations/thinking-animation.webm";
+import RitaProgressCard from "../RitaProgressCard";
 
-const PromptReply = ({ uuid, reply, pending, error, sources = [] }) => {
+const PromptReply = ({
+  uuid,
+  reply,
+  pending,
+  error,
+  sources = [],
+  selectedRitaAgentId = null,
+  attachments = [],
+}) => {
   if (!reply && sources.length === 0 && !pending && !error) return null;
 
   if (pending) {
     return (
       <div className="flex justify-start w-full">
         <div className="py-4 pl-0 pr-4 flex flex-col md:max-w-[80%]">
-          <RitaProgressMessage />
+          <RitaProgressCard
+            agentId={selectedRitaAgentId}
+            hasAttachments={attachments.length > 0}
+          />
         </div>
       </div>
     );
@@ -81,7 +92,7 @@ function RenderAssistantChatContent({ message, messageId }) {
 
   const thinking =
     message.match(THOUGHT_REGEX_OPEN) && !message.match(THOUGHT_REGEX_CLOSE);
-  if (thinking && !isAdmin) return <RitaProgressMessage />;
+  if (thinking && !isAdmin) return <RitaProgressMessage statusText={message} />;
   if (thinking)
     return (
       <ThoughtChainComponent
@@ -110,28 +121,8 @@ function RenderAssistantChatContent({ message, messageId }) {
   );
 }
 
-function RitaProgressMessage() {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl bg-zinc-800 light:bg-slate-100 px-4 py-3 text-zinc-200 light:text-slate-700">
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="h-6 w-6 light:invert light:opacity-60"
-      >
-        <source src={ThinkingAnimation} type="video/webm" />
-      </video>
-      <div className="flex flex-col">
-        <span className="text-sm font-medium">
-          RITA is preparing your answer
-        </span>
-        <span className="text-xs text-zinc-400 light:text-slate-500">
-          Please wait a moment...
-        </span>
-      </div>
-    </div>
-  );
+function RitaProgressMessage({ statusText = "" }) {
+  return <RitaProgressCard statusText={statusText} />;
 }
 
 export default memo(PromptReply);

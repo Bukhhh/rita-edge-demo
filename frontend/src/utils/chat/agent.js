@@ -137,10 +137,10 @@ export default function handleSocketResponse(socket, event, setChatHistory) {
             content: data.content.content,
             role: "assistant",
             sources: [],
-            closed: true,
+            closed: false,
             error: null,
-            animate: false,
-            pending: false,
+            animate: true,
+            pending: true,
             metrics: {},
           },
         ];
@@ -203,7 +203,13 @@ export default function handleSocketResponse(socket, event, setChatHistory) {
         // Generic text response - will be put in the agent thought bubble
         return prev.map((msg) =>
           msg.uuid === data.content.uuid
-            ? { ...msg, content: msg.content + data.content.content }
+            ? {
+                ...msg,
+                content: msg.content + data.content.content,
+                closed: false,
+                animate: true,
+                pending: true,
+              }
             : msg
         );
       }
