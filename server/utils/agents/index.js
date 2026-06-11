@@ -4,10 +4,17 @@ const {
   WorkspaceAgentInvocation,
 } = require("../../models/workspaceAgentInvocation");
 const { WorkspaceParsedFiles } = require("../../models/workspaceParsedFiles");
+const { Document } = require("../../models/documents");
 const { User } = require("../../models/user");
 const { Workspace } = require("../../models/workspace");
 const { WorkspaceChats } = require("../../models/workspaceChats");
 const { safeJsonParse } = require("../http");
+const { fileData } = require("../files");
+const {
+  boundedDocumentContext,
+  buildDocumentProfile,
+  DEFAULT_DOCUMENT_CONTEXT_CHARS,
+} = require("../rita/documentProfile");
 const { USER_AGENT, WORKSPACE_AGENT } = require("./defaults");
 const ImportedPlugin = require("./imported");
 const { AgentFlows } = require("../agentFlows");
@@ -19,6 +26,10 @@ const {
 const { DocumentManager } = require("../DocumentManager");
 
 class AgentHandler {
+  static RITA_CONTEXT_FILE_LIMIT = 4;
+  static RITA_MAX_ATTACHED_DOCUMENTS = 4;
+  static RITA_MAX_TOTAL_CONTEXT_CHARS = 28_000;
+
   #invocationUUID;
   #funcsToLoad = [];
   invocation = null;
@@ -117,6 +128,11 @@ class AgentHandler {
       this.log("Error loading chat history", e.message);
       return [];
     }
+  }
+
+  #chatHistoryLimit() {
+    if (this.ritaAgent?.lifecycle === "one_shot") return 4;
+    return 20;
   }
 
   checkSetup() {
@@ -670,6 +686,188 @@ class AgentHandler {
     return this;
   }
 
+  #visionAttachments() {
+    return (this.attachments || []).filter(
+      (attachment) =>
+        attachment?.contentString && attachment?.mime?.startsWith("image/")
+    );
+  }
+
+  #documentAttachments() {
+    return (this.attachments || []).filter(
+      (attachment) =>
+        attachment?.type === "upload" ||
+        ["added_context", "embedded", "success", "failed"].includes(
+          attachment?.status
+        )
+    );
+  }
+
+  async #embeddedDocumentContext(attachment = {}) {
+    const workspaceId = this.invocation.workspace.id;
+    const attachmentDocument = attachment.document || {};
+    const documentId = parseInt(attachmentDocument.id);
+    const document = !Number.isNaN(documentId)
+      ? await Document.get({ id: documentId, workspaceId })
+      : null;
+    const documentMetadata = safeJsonParse(document?.metadata, {});
+    const docpath =
+      document?.docpath ||
+      attachmentDocument.docpath ||
+      attachmentDocument.location;
+    if (!docpath) return null;
+
+    const data = await fileData(docpath);
+    if (!data?.pageContent) return null;
+
+    return {
+      name:
+        data.title ||
+        document?.filename ||
+        attachmentDocument.filename ||
+        attachment.name ||
+        "Uploaded Document",
+      content: data.pageContent,
+      profile:
+        data.ritaProfile ||
+        documentMetadata.ritaProfile ||
+        buildDocumentProfile({
+          filename:
+            data.title ||
+            document?.filename ||
+            attachmentDocument.filename ||
+            attachment.name,
+          content: data.pageContent,
+          metadata: data,
+          tokenCountEstimate: data.token_count_estimate,
+        }),
+      sourceId: docpath,
+    };
+  }
+
+  async #parsedAttachmentContext(attachment = {}, user = null) {
+    const parsedFileId = attachment?.document?.id;
+    if (!parsedFileId) return null;
+    const doc = await WorkspaceParsedFiles.getContextFileById(
+      parsedFileId,
+      this.invocation.workspace,
+      user,
+      { includeProfile: true }
+    );
+    if (!doc?.pageContent) return null;
+
+    return {
+      name:
+        doc.title ||
+        attachment?.document?.title ||
+        attachment?.name ||
+        "Uploaded Document",
+      content: doc.pageContent,
+      profile:
+        doc.ritaProfile ||
+        buildDocumentProfile({
+          filename:
+            doc.title ||
+            attachment?.document?.title ||
+            attachment?.name ||
+            "Uploaded Document",
+          content: doc.pageContent,
+          metadata: doc,
+          tokenCountEstimate: doc.token_count_estimate,
+        }),
+      sourceId: doc.id || attachment?.document?.id || attachment?.name,
+    };
+  }
+
+  async #explicitAttachmentContext(user = null) {
+    const documents = [];
+    const unavailable = [];
+    const attachments = this.#documentAttachments();
+
+    for (const attachment of attachments) {
+      if (attachment.status === "failed") {
+        unavailable.push(attachment.name || "uploaded file");
+        continue;
+      }
+
+      let document = null;
+      if (attachment.status === "embedded") {
+        document = await this.#embeddedDocumentContext(attachment);
+      } else {
+        document = await this.#parsedAttachmentContext(attachment, user);
+      }
+
+      if (document) documents.push(document);
+      else unavailable.push(attachment.name || "uploaded file");
+    }
+
+    return { documents, unavailable, requestedCount: attachments.length };
+  }
+
+  #documentSourceKey(doc = {}) {
+    return `${doc.sourceId || doc.name || ""}:${String(doc.content || "").slice(0, 500)}`;
+  }
+
+  #uniqueDocuments(documents = []) {
+    const seen = new Set();
+    return documents.filter((doc) => {
+      const key = this.#documentSourceKey(doc);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  #formatAttachedDocuments(documents = [], query = "") {
+    const selectedDocuments = this.#uniqueDocuments(documents).slice(
+      0,
+      AgentHandler.RITA_MAX_ATTACHED_DOCUMENTS
+    );
+    let remainingChars = AgentHandler.RITA_MAX_TOTAL_CONTEXT_CHARS;
+
+    const formatted = selectedDocuments
+      .map((doc, i) => {
+        if (remainingChars <= 0) return null;
+        const filename = doc.name || `Document ${i + 1}`;
+        const profile =
+          doc.profile ||
+          buildDocumentProfile({
+            filename,
+            content: doc.content,
+            tokenCountEstimate: doc.token_count_estimate,
+          });
+        const maxChars = Math.min(
+          DEFAULT_DOCUMENT_CONTEXT_CHARS,
+          Math.max(4_000, remainingChars)
+        );
+        const content = boundedDocumentContext({
+          content: doc.content,
+          profile,
+          query,
+          maxChars,
+        });
+        remainingChars -= content.length;
+        return `<document name="${filename}">\n${content}\n</document>`;
+      })
+      .filter(Boolean);
+
+    const skippedCount = Math.max(
+      0,
+      documents.length - selectedDocuments.length
+    );
+    if (skippedCount > 0) {
+      formatted.push(
+        `<context_note>${skippedCount} additional document(s) were not injected to keep the request responsive. Ask the user to attach the exact file or narrow the request if more context is needed.</context_note>`
+      );
+    }
+
+    return (
+      "\n\n<attached_documents>\n" +
+      formatted.join("\n") +
+      "\n</attached_documents>"
+    );
+  }
+
   /**
    * Fetch fresh parsed files and pinned documents, format them for injection into user messages.
    * Called on every chat turn to ensure context is always up-to-date.
@@ -686,23 +884,56 @@ class AgentHandler {
       workspace: this.invocation.workspace,
     });
 
-    return Promise.all([
-      WorkspaceParsedFiles.getContextFiles(
-        this.invocation.workspace,
-        thread,
-        user
-      ),
-      documentManager.pinnedDocs(),
-    ])
-      .then(([parsedFiles, pinnedDocs]) => {
+    return this.#explicitAttachmentContext(user)
+      .then(async (explicitContext) => {
+        if (
+          explicitContext.requestedCount > 0 &&
+          explicitContext.documents.length === 0
+        ) {
+          return (
+            "\n\n<rita_file_context_error>\n" +
+            `RITA received uploaded file reference(s), but could not read or attach extracted content for: ${explicitContext.unavailable.join(", ")}.\n` +
+            'Do not generate a chart or report from missing data. Tell the user: "RITA could not read or attach the uploaded file properly. Please upload a clearer CSV, Excel, PDF, or Word file and try again."\n' +
+            "</rita_file_context_error>"
+          );
+        }
+
+        if (explicitContext.documents.length > 0) {
+          this.log(
+            `Injecting ${explicitContext.documents.length} explicit uploaded file(s) into user message`
+          );
+          return this.#formatAttachedDocuments(
+            explicitContext.documents,
+            this.invocation.prompt
+          );
+        }
+
+        const [parsedFiles, pinnedDocs] = await Promise.all([
+          WorkspaceParsedFiles.getContextFiles(
+            this.invocation.workspace,
+            thread,
+            user,
+            {
+              limit: AgentHandler.RITA_CONTEXT_FILE_LIMIT,
+              orderBy: { id: "desc" },
+              includeProfile: true,
+            }
+          ),
+          documentManager.pinnedDocs(),
+        ]);
+
         const allDocuments = [
           ...(parsedFiles || []).map((doc) => ({
             name: doc.title || "Uploaded Document",
             content: doc.pageContent,
+            profile: doc.ritaProfile,
+            sourceId: doc.id || doc.location || doc.title,
           })),
           ...(pinnedDocs || []).map((doc) => ({
             name: doc.title || doc.metadata?.title || "Pinned Document",
             content: doc.pageContent,
+            profile: doc.ritaProfile || doc.metadata?.ritaProfile,
+            sourceId: doc.id || doc.metadata?.id || doc.title,
           })),
         ];
 
@@ -716,15 +947,9 @@ class AgentHandler {
             `Injecting ${pinnedDocs.length} pinned document(s) into user message`
           );
 
-        return (
-          "\n\n<attached_documents>\n" +
-          allDocuments
-            .map((doc, i) => {
-              const filename = doc.name || `Document ${i + 1}`;
-              return `<document name="${filename}">\n${doc.content}\n</document>`;
-            })
-            .join("\n") +
-          "\n</attached_documents>"
+        return this.#formatAttachedDocuments(
+          allDocuments,
+          this.invocation.prompt
         );
       })
       .catch((e) => {
@@ -741,10 +966,11 @@ class AgentHandler {
     this.aibitat = new AIbitat({
       provider: this.provider ?? "openai",
       model: this.model ?? "gpt-4o",
-      chats: await this.#chatHistory(20),
+      chats: await this.#chatHistory(this.#chatHistoryLimit()),
       handlerProps: {
         invocation: this.invocation,
         log: this.log,
+        ritaAgent: this.ritaAgent,
       },
     });
 
@@ -797,7 +1023,7 @@ class AgentHandler {
       from: USER_AGENT.name,
       to: this.channel ?? WORKSPACE_AGENT.name,
       content: this.#stripAgentCommand(this.invocation.prompt),
-      attachments: this.attachments,
+      attachments: this.#visionAttachments(),
     });
   }
 }

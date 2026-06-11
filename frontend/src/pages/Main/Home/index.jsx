@@ -28,6 +28,7 @@ import WorkspaceModelPicker from "@/components/WorkspaceChat/ChatContainer/Works
 import { ChatTooltips } from "@/components/WorkspaceChat/ChatContainer/ChatTooltips";
 import { ChatSidebarProvider } from "@/components/WorkspaceChat/ChatContainer/ChatSidebar";
 import MemoriesSidebar from "@/components/WorkspaceChat/ChatContainer/MemoriesSidebar";
+import { requestAttachmentsFromFiles } from "@/components/WorkspaceChat/ChatContainer/attachmentUtils";
 
 async function getTargetWorkspace() {
   const lastVisited = safeJsonParse(
@@ -247,11 +248,11 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
     }
   }
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e, messageOverride = null) {
     e.preventDefault();
     const currentMessage =
-      document.getElementById(PROMPT_INPUT_ID)?.value?.trim() || "";
-    await submitMessage(currentMessage, parseAttachments());
+      messageOverride ?? document.getElementById(PROMPT_INPUT_ID)?.value ?? "";
+    await submitMessage(currentMessage.trim(), parseAttachments());
   }
 
   function sendCommand({
@@ -271,7 +272,11 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
       if (!text.trim()) return;
       submitMessage(
         text.trim(),
-        Array.isArray(attachments) ? attachments : parseAttachments(),
+        Array.isArray(attachments)
+          ? attachments
+          : selectedRitaAgentId
+            ? requestAttachmentsFromFiles(files, parseAttachments)
+            : parseAttachments(),
         displayText?.trim() || null,
         selectedRitaAgentId
       );

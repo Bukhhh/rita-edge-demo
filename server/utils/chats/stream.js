@@ -138,7 +138,8 @@ async function streamChatWithWorkspace(
   const parsedFiles = await WorkspaceParsedFiles.getContextFiles(
     workspace,
     thread || null,
-    user || null
+    user || null,
+    { limit: 4, orderBy: { id: "desc" } }
   );
   parsedFiles.forEach((doc) => {
     const { pageContent, ...metadata } = doc;

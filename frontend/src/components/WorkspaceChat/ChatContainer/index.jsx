@@ -36,6 +36,10 @@ import WorkspaceModelPicker from "./WorkspaceModelPicker";
 import { ChatSidebarProvider } from "./ChatSidebar";
 import SourcesSidebar from "./SourcesSidebar";
 import MemoriesSidebar from "./MemoriesSidebar";
+import {
+  requestAttachmentsFromFiles,
+  visibleAttachmentsFromFiles,
+} from "./attachmentUtils";
 
 export default function ChatContainer({
   workspace,
@@ -54,6 +58,7 @@ export default function ChatContainer({
   const pendingPromptRef = useRef(null);
   const pendingMessageChecked = useRef(false);
   const pendingResetRef = useRef(false);
+  const agentSessionMetaRef = useRef(null);
 
   const { listening, resetTranscript } = useSpeechRecognition({
     clearTranscriptOnListen: true,
@@ -73,11 +78,12 @@ export default function ChatContainer({
     );
   }
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event, messageOverride = null) => {
     event.preventDefault();
     const currentMessage =
-      document.getElementById(PROMPT_INPUT_ID)?.value || "";
-    if (!currentMessage) return false;
+      messageOverride ?? document.getElementById(PROMPT_INPUT_ID)?.value ?? "";
+    const trimmedMessage = currentMessage.trim();
+    if (!trimmedMessage) return false;
 
     // Clear the localStorage draft for this thread/workspace so that if the
     // PromptInput remounts (empty→chat transition), it won't restore stale text
@@ -87,14 +93,14 @@ export default function ChatContainer({
       content: "",
       role: "assistant",
       pending: true,
-      userMessage: currentMessage,
+      userMessage: trimmedMessage,
       animate: true,
       promptAttachments: parseAttachments(),
     };
     const prevChatHistory = [
       ...chatHistory,
       {
-        content: currentMessage,
+        content: trimmedMessage,
         role: "user",
         attachments: visibleAttachmentsFromFiles(files, parseAttachments()),
       },
@@ -179,7 +185,9 @@ export default function ChatContainer({
     if (!text || text === "") return false;
     const promptAttachments = Array.isArray(attachments)
       ? attachments
-      : parseAttachments();
+      : selectedRitaAgentId
+        ? requestAttachmentsFromFiles(files, parseAttachments)
+        : parseAttachments();
     const visibleAttachments = visibleAttachmentsFromFiles(
       files,
       () => promptAttachments
@@ -311,6 +319,7 @@ export default function ChatContainer({
         window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
         setWebsocket(null);
         setSocketId(null);
+        agentSessionMetaRef.current = null;
       }
 
       if (!promptMessage || !promptMessage?.userMessage) {
@@ -330,15 +339,27 @@ export default function ChatContainer({
         workspaceSlug: workspace.slug,
         threadSlug,
         prompt: promptMessage.userMessage,
-        chatHandler: (chatResult) =>
-          handleChat(
+        chatHandler: (chatResult) => {
+          if (
+            promptMessage?.selectedRitaAgentId &&
+            chatResult?.type === "statusResponse" &&
+            chatResult?.textResponse?.includes("Preparing your request.")
+          ) {
+            return;
+          }
+
+          return handleChat(
             chatResult,
             setLoadingResponse,
             setChatHistory,
             remHistory,
             _chatHistory,
-            setSocketId
-          ),
+            (websocketUUID, agentSession = null) => {
+              agentSessionMetaRef.current = agentSession;
+              setSocketId(websocketUUID);
+            }
+          );
+        },
         attachments,
         selectedRitaAgentId: promptMessage?.selectedRitaAgentId || null,
       });
@@ -381,11 +402,15 @@ export default function ChatContainer({
         socket.addEventListener("close", (_event) => {
           setAgentSessionActive(false);
           window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
+          const closedAgentSession = agentSessionMetaRef.current;
+          const isOneShotRitaTask =
+            closedAgentSession?.type === "rita_agent" &&
+            closedAgentSession?.lifecycle === "one_shot";
           // When the close was triggered by /reset, skip the "Agent session
           // complete." status - the pending /reset flow will clear history.
           if (pendingResetRef.current) {
             pendingResetRef.current = false;
-          } else {
+          } else if (!isOneShotRitaTask) {
             setChatHistory((prev) => [
               ...prev.filter((msg) => !!msg.content),
               {
@@ -404,6 +429,7 @@ export default function ChatContainer({
           setLoadingResponse(false);
           setWebsocket(null);
           setSocketId(null);
+          agentSessionMetaRef.current = null;
         });
         setWebsocket(socket);
         setAgentSessionActive(true);
@@ -427,6 +453,7 @@ export default function ChatContainer({
         setLoadingResponse(false);
         setWebsocket(null);
         setSocketId(null);
+        agentSessionMetaRef.current = null;
       }
     }
     handleWSS();
@@ -436,6 +463,7 @@ export default function ChatContainer({
         setAgentSessionActive(false);
         window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
         socket.close();
+        agentSessionMetaRef.current = null;
       }
     };
   }, [socketId]);
@@ -539,21 +567,4 @@ export default function ChatContainer({
       </div>
     </ChatSidebarProvider>
   );
-}
-
-function visibleAttachmentsFromFiles(
-  files = [],
-  fallbackAttachments = () => []
-) {
-  const visibleFiles = files.map((item) => ({
-    uid: item.uid,
-    name: item.file?.name,
-    mime: item.file?.type,
-    contentString: item.contentString,
-    status: item.status,
-    type: item.type,
-  }));
-
-  if (visibleFiles.length > 0) return visibleFiles;
-  return fallbackAttachments();
 }

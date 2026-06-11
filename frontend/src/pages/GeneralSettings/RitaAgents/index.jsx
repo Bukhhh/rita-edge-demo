@@ -353,6 +353,12 @@ function RitaAgentCard({ agent, onUpdate }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <ReadOnlyField label="Version" value={agent.version} />
         <ReadOnlyField label="Default output" value={agent.default_output} />
+        <ReadOnlyField
+          label="Lifecycle"
+          value={
+            agent.lifecycle === "one_shot" ? "One-shot task" : "Feedback loop"
+          }
+        />
       </div>
 
       {agent.id === "rita-report-agent" && (

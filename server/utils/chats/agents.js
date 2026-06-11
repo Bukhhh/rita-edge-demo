@@ -59,9 +59,8 @@ async function grepAgents({
   selectedRitaAgentId = null,
 }) {
   let nativeToolingEnabled = false;
-  const selectedRitaAgent = await SystemSettings.ritaAgentById(
-    selectedRitaAgentId
-  );
+  const selectedRitaAgent =
+    await SystemSettings.ritaAgentById(selectedRitaAgentId);
 
   // If the workspace is in automatic mode, check if the workspace supports native tooling
   // to determine if the agent flow should be used or not.
@@ -74,6 +73,14 @@ async function grepAgents({
 
   const agentHandles = WorkspaceAgentInvocation.parseAgents(message);
   if (agentHandles.length > 0 || nativeToolingEnabled || selectedRitaAgent) {
+    const selectedRitaAgentSession = selectedRitaAgent
+      ? {
+          type: "rita_agent",
+          ritaAgentId: selectedRitaAgent.id,
+          ritaAgentName: selectedRitaAgent.name,
+          lifecycle: selectedRitaAgent.lifecycle || "feedback_loop",
+        }
+      : null;
     const { invocation: newInvocation } = await WorkspaceAgentInvocation.new({
       prompt: message,
       workspace: workspace,
@@ -111,20 +118,22 @@ async function grepAgents({
       close: false,
       error: null,
       websocketUUID: newInvocation.uuid,
+      agentSession: selectedRitaAgentSession,
     });
 
     // Close HTTP stream-able chunk response method because we will swap to agents now.
     writeResponseChunk(response, {
       id: uuid,
       type: "statusResponse",
-      textResponse:
-        selectedRitaAgent
-          ? `${selectedRitaAgent.name}: Connected. Type /exit to exit agent execution loop early.`
-          : "@agent: Swapping over to agent chat. Type /exit to exit agent execution loop early.",
+      textResponse: selectedRitaAgent
+        ? selectedRitaAgentSession?.lifecycle === "one_shot"
+          ? `${selectedRitaAgent.name}: Preparing your request.`
+          : `${selectedRitaAgent.name}: Connected. Type /exit to exit agent execution loop early.`
+        : "@agent: Swapping over to agent chat. Type /exit to exit agent execution loop early.",
       sources: [],
       close: true,
       error: null,
-      animate: true,
+      animate: selectedRitaAgentSession?.lifecycle !== "one_shot",
     });
     return true;
   }

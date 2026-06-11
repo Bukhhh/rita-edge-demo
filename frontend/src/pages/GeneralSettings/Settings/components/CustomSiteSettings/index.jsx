@@ -136,7 +136,10 @@ export default function CustomSiteSettings() {
                 return { ...prev, title: e.target.value };
               });
             }}
-            value={settings.title ?? "rita-Edge | Your Local Assistant"}
+            value={
+              settings.title ??
+              "rita-Edge | Your Local Assistant"
+            }
           />
         </div>
       </div>

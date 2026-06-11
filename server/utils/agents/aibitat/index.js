@@ -550,6 +550,11 @@ class AIbitat {
       return;
     }
 
+    if (this.shouldTerminateAfterReply(route)) {
+      this.terminate(route.to);
+      return;
+    }
+
     const newChat = { to: route.from, from: route.to };
 
     if (
@@ -575,6 +580,21 @@ class AIbitat {
   shouldAgentInterrupt(agent = "") {
     const config = this.getAgentConfig(agent);
     return this.defaultInterrupt === "ALWAYS" || config.interrupt === "ALWAYS";
+  }
+
+  /**
+   * Some task-oriented entrypoints should complete after their first answer
+   * instead of keeping the websocket open for feedback. RITA builder agents use
+   * this for explicit report/chart tasks so the next user message returns to
+   * normal chat unless the user starts another task.
+   *
+   * @param {{from: string, to: string}} route
+   * @returns {boolean}
+   */
+  shouldTerminateAfterReply(route = {}) {
+    if (this.handlerProps?.ritaAgent?.lifecycle !== "one_shot") return false;
+    if (!route?.to || !this.agents.has(route.to)) return false;
+    return this.shouldAgentInterrupt(route.to);
   }
 
   /**

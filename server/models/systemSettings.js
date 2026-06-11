@@ -67,6 +67,7 @@ const defaultRitaAgents = [
     tools: ["create-pdf-file", "create-chart-pdf-report"],
     capabilities: ["pdf_report_generator", "report_builder"],
     default_output: "pdf",
+    lifecycle: "one_shot",
     instructions:
       "You are RITA - Report Agent. Prioritize structured reporting, executive summaries, clear sections, evidence-backed findings, and PDF-ready output. When useful, use chart PDF/report tools instead of only replying in prose.",
   },
@@ -82,6 +83,7 @@ const defaultRitaAgents = [
     tools: ["create-matplotlib-chart", "create-chart-pdf-report"],
     capabilities: ["chart_generator", "pdf_report_generator"],
     default_output: "png/pdf",
+    lifecycle: "one_shot",
     instructions:
       "You are RITA - Graph Agent. Prioritize choosing the right chart type, extracting numeric series carefully, labeling visuals clearly, and generating chart outputs when the user asks for graphs, visual insights, dashboards, or trends.",
   },
@@ -156,8 +158,10 @@ function normalizeRitaProviderControls(update = {}) {
 }
 
 function normalizeRitaAgents(update = []) {
-  const incoming = typeof update === "string" ? safeJsonParse(update, []) : update;
+  const incoming =
+    typeof update === "string" ? safeJsonParse(update, []) : update;
   const incomingAgents = Array.isArray(incoming) ? incoming : [];
+  const allowedLifecycles = ["feedback_loop", "one_shot"];
   const incomingById = incomingAgents.reduce((acc, agent) => {
     if (agent?.id) acc[agent.id] = agent;
     return acc;
@@ -184,9 +188,13 @@ function normalizeRitaAgents(update = []) {
         ? incomingAgent.color
         : agent.color,
       version:
-        typeof incomingAgent.version === "string" && incomingAgent.version.trim()
+        typeof incomingAgent.version === "string" &&
+        incomingAgent.version.trim()
           ? incomingAgent.version.trim().slice(0, 24)
           : agent.version,
+      lifecycle: allowedLifecycles.includes(incomingAgent.lifecycle)
+        ? incomingAgent.lifecycle
+        : agent.lifecycle || "feedback_loop",
       instructions:
         typeof incomingAgent.instructions === "string" &&
         incomingAgent.instructions.trim()

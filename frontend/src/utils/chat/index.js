@@ -140,7 +140,7 @@ export default function handleChat(
     }
     setChatHistory([..._chatHistory]);
   } else if (type === "agentInitWebsocketConnection") {
-    setWebsocket(chatResult.websocketUUID);
+    setWebsocket(chatResult.websocketUUID, chatResult.agentSession || null);
   } else if (type === "stopGeneration") {
     const chatIdx = _chatHistory.length - 1;
     const existingHistory = { ..._chatHistory[chatIdx] };

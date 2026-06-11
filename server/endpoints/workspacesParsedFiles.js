@@ -11,6 +11,7 @@ const { validWorkspaceSlug } = require("../utils/middleware/validWorkspace");
 const { CollectorApi } = require("../utils/collectorApi");
 const { WorkspaceThread } = require("../models/workspaceThread");
 const { WorkspaceParsedFiles } = require("../models/workspaceParsedFiles");
+const { buildDocumentProfile } = require("../utils/rita/documentProfile");
 
 function workspaceParsedFilesEndpoints(app) {
   if (!app) return;
@@ -166,7 +167,13 @@ function workspaceParsedFilesEndpoints(app) {
           : null;
         const files = await Promise.all(
           documents.map(async (doc) => {
-            const metadata = { ...doc };
+            const ritaProfile = buildDocumentProfile({
+              filename: originalname,
+              content: doc.pageContent || "",
+              metadata: doc,
+              tokenCountEstimate: doc.token_count_estimate || 0,
+            });
+            const metadata = { ...doc, ritaProfile };
             // Strip out pageContent
             delete metadata.pageContent;
             const filename = `${originalname}-${doc.id}.json`;

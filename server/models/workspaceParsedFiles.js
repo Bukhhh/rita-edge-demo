@@ -5,6 +5,7 @@ const { documentsPath, directUploadsPath } = require("../utils/files");
 const { safeJsonParse } = require("../utils/http");
 const fs = require("fs");
 const path = require("path");
+const { buildDocumentProfile } = require("../utils/rita/documentProfile");
 
 const WorkspaceParsedFiles = {
   create: async function ({
@@ -92,6 +93,33 @@ const WorkspaceParsedFiles = {
     }
   },
 
+  ensureProfileOnSourceFile: function (sourceFile, parsedFile, metadata = {}) {
+    try {
+      if (!sourceFile || !fs.existsSync(sourceFile)) return null;
+      const content = fs.readFileSync(sourceFile, "utf-8");
+      const data = safeJsonParse(content, null);
+      if (!data?.pageContent) return null;
+
+      const ritaProfile =
+        metadata.ritaProfile ||
+        data.ritaProfile ||
+        buildDocumentProfile({
+          filename: metadata.title || parsedFile?.filename || "uploaded file",
+          content: data.pageContent,
+          metadata: data,
+          tokenCountEstimate:
+            parsedFile?.tokenCountEstimate || data.token_count_estimate || 0,
+        });
+
+      const nextData = { ...data, ritaProfile };
+      fs.writeFileSync(sourceFile, JSON.stringify(nextData, null, 2));
+      return ritaProfile;
+    } catch (error) {
+      console.error("Failed to persist RITA document profile:", error.message);
+      return null;
+    }
+  },
+
   totalTokenCount: async function (clause = {}) {
     const { _sum } = await prisma.workspace_parsed_files.aggregate({
       where: clause,
@@ -124,6 +152,7 @@ const WorkspaceParsedFiles = {
       // Get file from metadata location
       const sourceFile = path.join(directUploadsPath, path.basename(location));
       if (!fs.existsSync(sourceFile)) throw new Error("Source file not found");
+      this.ensureProfileOnSourceFile(sourceFile, parsedFile, metadata);
 
       // Move to custom-documents
       const customDocsPath = path.join(documentsPath, "custom-documents");
@@ -185,6 +214,7 @@ const WorkspaceParsedFiles = {
           id: file.id,
           title: metadata.title || metadata.location,
           location: metadata.location,
+          profile: metadata.ritaProfile || null,
           token_count_estimate: file.tokenCountEstimate,
         });
       }
@@ -204,35 +234,83 @@ const WorkspaceParsedFiles = {
     }
   },
 
-  getContextFiles: async function (workspace, thread = null, user = null) {
+  contextFromRecord: function (file = null, { includeProfile = false } = {}) {
     try {
-      const files = await this.where({
-        workspaceId: workspace.id,
-        threadId: thread?.id || null,
-        ...(user ? { userId: user.id } : {}),
-      });
+      if (!file) return null;
+      const metadata = safeJsonParse(file.metadata, {});
+      const location = metadata.location;
+      if (!location) return null;
+
+      const sourceFile = path.join(directUploadsPath, path.basename(location));
+      if (!fs.existsSync(sourceFile)) return null;
+
+      const content = fs.readFileSync(sourceFile, "utf-8");
+      const data = safeJsonParse(content, null);
+      if (!data?.pageContent) return null;
+
+      return {
+        pageContent: data.pageContent,
+        ...metadata,
+        ...(includeProfile
+          ? {
+              ritaProfile:
+                metadata.ritaProfile ||
+                data.ritaProfile ||
+                buildDocumentProfile({
+                  filename: metadata.title || file.filename || "uploaded file",
+                  content: data.pageContent,
+                  metadata: data,
+                  tokenCountEstimate:
+                    file.tokenCountEstimate || data.token_count_estimate || 0,
+                }),
+            }
+          : {}),
+        token_count_estimate: file.tokenCountEstimate,
+      };
+    } catch (error) {
+      console.error("Failed to read parsed file context:", error.message);
+      return null;
+    }
+  },
+
+  getContextFileById: async function (
+    fileId,
+    workspace,
+    user = null,
+    options = {}
+  ) {
+    const id = parseInt(fileId);
+    if (!id || Number.isNaN(id) || !workspace?.id) return null;
+
+    const file = await this.get({
+      id,
+      workspaceId: workspace.id,
+      ...(user ? { userId: user.id } : {}),
+    });
+    return this.contextFromRecord(file, options);
+  },
+
+  getContextFiles: async function (
+    workspace,
+    thread = null,
+    user = null,
+    { limit = null, orderBy = null, includeProfile = false } = {}
+  ) {
+    try {
+      const files = await this.where(
+        {
+          workspaceId: workspace.id,
+          threadId: thread?.id || null,
+          ...(user ? { userId: user.id } : {}),
+        },
+        limit,
+        orderBy
+      );
 
       const results = [];
       for (const file of files) {
-        const metadata = safeJsonParse(file.metadata, {});
-        const location = metadata.location;
-        if (!location) continue;
-
-        const sourceFile = path.join(
-          directUploadsPath,
-          path.basename(location)
-        );
-        if (!fs.existsSync(sourceFile)) continue;
-
-        const content = fs.readFileSync(sourceFile, "utf-8");
-        const data = safeJsonParse(content, null);
-        if (!data?.pageContent) continue;
-
-        results.push({
-          pageContent: data.pageContent,
-          token_count_estimate: file.tokenCountEstimate,
-          ...metadata,
-        });
+        const contextFile = this.contextFromRecord(file, { includeProfile });
+        if (contextFile) results.push(contextFile);
       }
 
       return results;

@@ -167,7 +167,7 @@ export default function PromptInput({
     if (e.target !== e.currentTarget) return;
     setFocused(false);
     setShowTools(false);
-    submit(e);
+    submit(e, promptInput);
   }
 
   function resetTextAreaHeight() {
@@ -232,7 +232,7 @@ export default function PromptInput({
       event.preventDefault();
       if (isStreaming || isDisabled) return; // Prevent submission if streaming or disabled
       setShowTools(false);
-      return submit(event);
+      return submit(event, promptInput);
     }
 
     // Is undo with Ctrl+Z or Cmd+Z + Shift key = Redo
@@ -388,6 +388,7 @@ export default function PromptInput({
               agent={selectedRitaAgent}
               promptInput={promptInput}
               setPromptInput={setPromptInput}
+              attachments={attachments}
               sendCommand={sendCommand}
               textareaRef={textareaRef}
               onDisconnect={disconnectRitaAgent}
@@ -432,7 +433,7 @@ export default function PromptInput({
                       sendCommand={sendCommand}
                       promptInput={promptInput}
                       textareaRef={textareaRef}
-                      visible={!agentSessionActive & showAgentCommand}
+                      visible={!agentSessionActive && showAgentCommand}
                     />
                   </div>
                   <ToolsButton
@@ -508,6 +509,7 @@ function RitaAgentBuilderPanel({
   agent = null,
   promptInput = "",
   setPromptInput,
+  attachments = [],
   sendCommand,
   textareaRef,
   onDisconnect,
@@ -526,6 +528,7 @@ function RitaAgentBuilderPanel({
       <ReportAgentBuilder
         promptInput={promptInput}
         setPromptInput={setPromptInput}
+        attachments={attachments}
         sendCommand={sendCommand}
         textareaRef={textareaRef}
         onDisconnect={onDisconnect}
@@ -539,6 +542,7 @@ function RitaAgentBuilderPanel({
       <GraphAgentBuilder
         promptInput={promptInput}
         setPromptInput={setPromptInput}
+        attachments={attachments}
         sendCommand={sendCommand}
         textareaRef={textareaRef}
         onDisconnect={onDisconnect}
@@ -553,6 +557,7 @@ function RitaAgentBuilderPanel({
 function ReportAgentBuilder({
   promptInput,
   setPromptInput,
+  attachments = [],
   sendCommand,
   textareaRef,
   onDisconnect,
@@ -564,6 +569,7 @@ function ReportAgentBuilder({
     () => new Set(["auto choose the best chart type"])
   );
   const [output, setOutput] = useState("pdf");
+  const [builderError, setBuilderError] = useState(null);
 
   function toggleAnalysis(value) {
     setAnalysis((prev) => {
@@ -599,6 +605,12 @@ function ReportAgentBuilder({
 
   function generateReport() {
     if (disabled) return;
+    const fileBlocker = getRitaBuilderFileBlocker(attachments);
+    if (fileBlocker) {
+      setBuilderError(fileBlocker);
+      return;
+    }
+    setBuilderError(null);
     const extra = promptInput.trim();
     const prompt = buildReportAgentPrompt({
       analysis: [...analysis],
@@ -679,6 +691,7 @@ function ReportAgentBuilder({
           />
         </div>
       </BuilderSection>
+      {builderError && <BuilderError>{builderError}</BuilderError>}
       <button
         type="button"
         onClick={generateReport}
@@ -698,6 +711,7 @@ function ReportAgentBuilder({
 function GraphAgentBuilder({
   promptInput,
   setPromptInput,
+  attachments = [],
   sendCommand,
   textareaRef,
   onDisconnect,
@@ -709,9 +723,16 @@ function GraphAgentBuilder({
     "auto choose the best single chart"
   );
   const [output, setOutput] = useState("png");
+  const [builderError, setBuilderError] = useState(null);
 
   function generateGraph() {
     if (disabled) return;
+    const fileBlocker = getRitaBuilderFileBlocker(attachments);
+    if (fileBlocker) {
+      setBuilderError(fileBlocker);
+      return;
+    }
+    setBuilderError(null);
     const extra = promptInput.trim();
     const prompt = buildGraphAgentPrompt({
       focus,
@@ -773,6 +794,7 @@ function GraphAgentBuilder({
           />
         </div>
       </BuilderSection>
+      {builderError && <BuilderError>{builderError}</BuilderError>}
       <button
         type="button"
         onClick={generateGraph}
@@ -869,6 +891,14 @@ function BuilderHint({ children }) {
     <p className="text-[11px] leading-relaxed text-zinc-400 light:text-slate-600">
       {children}
     </p>
+  );
+}
+
+function BuilderError({ children }) {
+  return (
+    <div className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-200 light:text-red-700 light:bg-red-50 light:border-red-200">
+      {children}
+    </div>
   );
 }
 
@@ -1119,4 +1149,27 @@ function useIsDisabled(attachments = []) {
   );
 
   return { isDisabled };
+}
+
+function getRitaBuilderFileBlocker(attachments = []) {
+  const documentAttachments = attachments.filter(
+    (attachment) => attachment.type === "upload"
+  );
+  if (!documentAttachments.length) return null;
+
+  const processing = documentAttachments.find(
+    (attachment) => attachment.status === "in_progress"
+  );
+  if (processing) {
+    return `RITA is still preparing "${processing.file?.name || "your file"}". Please wait a moment before generating.`;
+  }
+
+  const failed = documentAttachments.find(
+    (attachment) => attachment.status === "failed"
+  );
+  if (failed) {
+    return `RITA could not read "${failed.file?.name || "this file"}" properly. Please upload a clearer PDF, CSV, Excel, or Word file.`;
+  }
+
+  return null;
 }

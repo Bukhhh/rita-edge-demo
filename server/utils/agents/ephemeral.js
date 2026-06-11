@@ -11,6 +11,10 @@ const { WorkspaceParsedFiles } = require("../../models/workspaceParsedFiles");
 const { DocumentManager } = require("../DocumentManager");
 const { safeJsonParse } = require("../http");
 const {
+  boundedDocumentContext,
+  buildDocumentProfile,
+} = require("../rita/documentProfile");
+const {
   USER_AGENT,
   WORKSPACE_AGENT,
   agentSkillsFromSystemSettings,
@@ -383,7 +387,11 @@ class EphemeralAgentHandler extends AgentHandler {
     });
 
     return Promise.all([
-      WorkspaceParsedFiles.getContextFiles(this.#workspace, thread, user),
+      WorkspaceParsedFiles.getContextFiles(this.#workspace, thread, user, {
+        limit: 4,
+        orderBy: { id: "desc" },
+        includeProfile: true,
+      }),
       documentManager.pinnedDocs(),
     ])
       .then(([parsedFiles, pinnedDocs]) => {
@@ -391,10 +399,12 @@ class EphemeralAgentHandler extends AgentHandler {
           ...(parsedFiles || []).map((doc) => ({
             name: doc.title || "Uploaded Document",
             content: doc.pageContent,
+            profile: doc.ritaProfile,
           })),
           ...(pinnedDocs || []).map((doc) => ({
             name: doc.title || doc.metadata?.title || "Pinned Document",
             content: doc.pageContent,
+            profile: doc.ritaProfile || doc.metadata?.ritaProfile,
           })),
         ];
 
@@ -414,7 +424,19 @@ class EphemeralAgentHandler extends AgentHandler {
           allDocuments
             .map((doc, i) => {
               const filename = doc.name || `Document ${i + 1}`;
-              return `<document name="${filename}">\n${doc.content}\n</document>`;
+              const profile =
+                doc.profile ||
+                buildDocumentProfile({
+                  filename,
+                  content: doc.content,
+                  tokenCountEstimate: doc.token_count_estimate,
+                });
+              const content = boundedDocumentContext({
+                content: doc.content,
+                profile,
+                query: this.#prompt,
+              });
+              return `<document name="${filename}">\n${content}\n</document>`;
             })
             .join("\n") +
           "\n</attached_documents>"
