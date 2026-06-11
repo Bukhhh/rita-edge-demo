@@ -81,17 +81,38 @@ const WORKSPACE_AGENT = {
       prompt,
     });
     if (ritaAgent?.instructions) {
-      role = `${role}\n\n<RITA_AGENT_PROFILE>\nName: ${ritaAgent.name}\nDescription: ${ritaAgent.description}\nDefault output: ${ritaAgent.default_output}\nInstructions: ${ritaAgent.instructions}\n</RITA_AGENT_PROFILE>`;
+      role = `${role}\n\n<RITA_AGENT_PROFILE>\nName: ${ritaAgent.name}\nDescription: ${ritaAgent.description}\nDefault output: ${ritaAgent.default_output}\nInstructions: ${ritaAgent.instructions}\n${ritaAgentRuntimeRules(ritaAgent)}\n</RITA_AGENT_PROFILE>`;
     }
 
     return {
       role,
-      functions: [
-        ...(await agentSkillsFromSystemSettings()),
-      ],
+      functions: [...(await agentSkillsFromSystemSettings())],
     };
   },
 };
+
+function ritaAgentRuntimeRules(ritaAgent = {}) {
+  if (ritaAgent.id === "rita-report-agent") {
+    return [
+      "Runtime rules:",
+      "- When the user asks for a PDF report with charts, call create-chart-pdf-report. Do not only describe that you will call it.",
+      "- If chart data can be reasonably extracted from attached_documents or workspace context, build structured chart specs and call the tool immediately.",
+      "- If the requested chart data is not explicit, choose practical chart labels/values from the document profile and state assumptions in the report sections.",
+      "- Only reply in plain text instead of calling a tool when no data/context exists or the user explicitly asks for explanation only.",
+    ].join("\n");
+  }
+
+  if (ritaAgent.id === "rita-graph-agent") {
+    return [
+      "Runtime rules:",
+      "- When the user asks for a graph/chart output, call create-matplotlib-chart for image output or create-chart-pdf-report for PDF output.",
+      "- Do not only describe that you will create a graph. Generate the requested file using the tool.",
+      "- Create exactly one graph unless the user explicitly asks otherwise.",
+    ].join("\n");
+  }
+
+  return "";
+}
 
 /**
  * Fetches and preloads the names/identifiers for plugins that will be dynamically

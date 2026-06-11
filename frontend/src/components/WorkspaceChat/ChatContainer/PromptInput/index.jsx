@@ -813,14 +813,15 @@ function GraphAgentBuilder({
 
 function buildReportAgentPrompt({ analysis, chartTypes, output, extra }) {
   const outputInstructions = {
-    pdf: "Create a polished PDF report. Prefer create-chart-pdf-report when charts are requested.",
-    docx: "Create a polished DOCX report using the document creation tool.",
+    pdf: "Create a polished PDF report by calling create-chart-pdf-report. Do not only describe the report plan.",
+    docx: "Create a polished DOCX report using the document creation tool. Do not only describe the report plan.",
     "pdf and docx":
-      "Create both a polished PDF report and a DOCX report. Use chart/report tools where appropriate.",
+      "Create both a polished PDF report and a DOCX report. Call chart/report tools where appropriate. Do not only describe the report plan.",
   }[output];
 
   return [
     "RITA Report Builder request.",
+    "This is an execution request, not a planning request.",
     "Use the uploaded/attached document, parsed file context, or workspace context.",
     "If <attached_documents> context is present in the conversation, treat it as the uploaded source data and do not ask the user to upload again.",
     "If the user recently embedded a file into the workspace, use RAG/long-term memory or workspace context before asking them to upload again.",
@@ -829,6 +830,8 @@ function buildReportAgentPrompt({ analysis, chartTypes, output, extra }) {
     "Generate up to three charts in the report. Each chart should cover a different useful angle and should not duplicate the same insight.",
     `Output: ${output}.`,
     outputInstructions,
+    "For PDF chart reports, the next action must be a create-chart-pdf-report tool call with filename, title, summary, sections, charts, and recommendations.",
+    "Do not answer with 'I will proceed', 'Now I will create', or similar narration unless the tool is unavailable.",
     "Write for non-technical users. Keep the report structured, clear, and management-friendly.",
     "If the source document is unclear but context exists, make reasonable assumptions and state them briefly.",
     "Only ask the user to upload data when there is no attached document, no parsed file context, no embedded workspace context, no workspace context, and no user-provided data.",
@@ -849,8 +852,9 @@ function buildGraphAgentPrompt({ focus, chartType, output, extra }) {
     `Chart type: ${chartType}.`,
     `Output: ${output}.`,
     output === "png"
-      ? "Use the matplotlib PNG chart tool where possible."
-      : "Create a one-chart PDF output where possible.",
+      ? "Call create-matplotlib-chart to generate the PNG file. Do not only describe the chart plan."
+      : "Call create-chart-pdf-report to generate a one-chart PDF output. Do not only describe the chart plan.",
+    "This is an execution request, not a planning request.",
     "Include a short plain-language insight explaining the graph.",
     "Only ask the user to upload data when there is no attached document, no parsed file context, no embedded workspace context, no workspace context, and no user-provided data.",
     extra ? `Additional user notes: ${extra}` : null,

@@ -104,6 +104,7 @@ class Provider {
    * @param {Object} handlerProps - The handler props to attach to the provider.
    */
   attachHandlerProps(handlerProps = {}) {
+    this.handlerProps = handlerProps || {};
     this.invocation = handlerProps?.invocation || {};
     this.executingUserId = this.invocation?.user_id
       ? `user_${this.invocation.user_id}`

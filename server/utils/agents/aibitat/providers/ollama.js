@@ -56,6 +56,17 @@ class OllamaProvider extends InheritMultiple([Provider, UnTooled]) {
     return this._supportsToolCalling;
   }
 
+  async shouldUseNativeToolCalling(functions = []) {
+    if (functions.length === 0) return false;
+    if (this.handlerProps?.ritaAgent?.id) {
+      this.providerLog(
+        `RITA agent ${this.handlerProps.ritaAgent.id} will use prompt-based tool selection for better local model reliability.`
+      );
+      return false;
+    }
+    return await this.supportsNativeToolCalling();
+  }
+
   get queryOptions() {
     this.providerLog(
       `${this.model} is using a max context window of ${OllamaAILLM.promptWindowLimit(this.model)}/${OllamaAILLM.maxContextWindow(this.model)} tokens.`
@@ -293,8 +304,7 @@ class OllamaProvider extends InheritMultiple([Provider, UnTooled]) {
    * @returns The completion.
    */
   async stream(messages, functions = [], eventHandler = null) {
-    const useNative =
-      functions.length > 0 && (await this.supportsNativeToolCalling());
+    const useNative = await this.shouldUseNativeToolCalling(functions);
 
     if (useNative) {
       this.providerLog(
@@ -493,8 +503,7 @@ class OllamaProvider extends InheritMultiple([Provider, UnTooled]) {
    * @returns The completion.
    */
   async complete(messages, functions = []) {
-    const useNative =
-      functions.length > 0 && (await this.supportsNativeToolCalling());
+    const useNative = await this.shouldUseNativeToolCalling(functions);
 
     if (useNative) {
       this.resetUsage();
