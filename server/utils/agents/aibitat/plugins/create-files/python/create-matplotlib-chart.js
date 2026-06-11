@@ -122,8 +122,11 @@ module.exports.CreateMatplotlibChart = {
               try {
                 buffer = await fs.readFile(outputPath);
               } catch {
-                const stderr = result.stderr?.trim();
-                return `Python completed but did not create a chart file. ${stderr ? `stderr: ${stderr}` : "Make sure the script saves to output_path."}`;
+                buffer = await readFallbackChartFile(runDirectory, extension);
+                if (!buffer) {
+                  const stderr = result.stderr?.trim();
+                  return `Python completed but did not create a chart file. ${stderr ? `stderr: ${stderr}` : "Make sure the script saves to output_path."}`;
+                }
               }
 
               if (buffer.length === 0) {
@@ -186,12 +189,28 @@ function buildScript(userCode) {
 }
 
 function sanitizeMatplotlibCode(userCode) {
-  return String(userCode || "")
+  const code = normalizeEscapedPythonCode(userCode);
+  return String(code || "")
     .trim()
     .replace(/^```(?:python|py)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201c\u201d]/g, '"');
+}
+
+function normalizeEscapedPythonCode(userCode) {
+  const code = String(userCode || "");
+  const escapedNewlineCount = (code.match(/\\n/g) || []).length;
+  const realNewlineCount = (code.match(/\n/g) || []).length;
+
+  if (escapedNewlineCount > realNewlineCount) {
+    return code
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "  ");
+  }
+
+  return code;
 }
 
 function normalizeFormat(format, filename) {
@@ -236,6 +255,22 @@ async function runPythonScript(scriptPath, cwd, extraEnv = {}) {
   throw new Error(
     `No Python executable was found. Tried: ${errors.join(", ")}. Set PYTHON_BIN to a Python environment with matplotlib installed.`
   );
+}
+
+async function readFallbackChartFile(runDirectory, extension) {
+  const files = await fs.readdir(runDirectory);
+  const candidates = files.filter((file) => {
+    const ext = file.split(".").pop()?.toLowerCase();
+    return ext === extension && !file.startsWith("chart.");
+  });
+
+  for (const candidate of candidates) {
+    const filePath = path.join(runDirectory, candidate);
+    const stat = await fs.stat(filePath);
+    if (stat.isFile() && stat.size > 0) return fs.readFile(filePath);
+  }
+
+  return null;
 }
 
 function isWindowsPythonAliasError(error) {
