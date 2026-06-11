@@ -331,6 +331,10 @@ class MetaGenerator {
         { label: "meta_page_favicon" },
         null
       );
+      const faviconFilename = await SystemSettings.getValueOrFallback(
+        { label: "favicon_filename" },
+        null
+      );
 
       let iconUrl = "/favicon.png";
       if (faviconURL) {
@@ -345,6 +349,10 @@ class MetaGenerator {
           iconUrl = "/favicon.png";
         }
       }
+      const versionedIconUrl =
+        faviconFilename && iconUrl.startsWith("/api/system/favicon")
+          ? `${iconUrl}?v=${encodeURIComponent(faviconFilename)}`
+          : iconUrl;
 
       const manifest = {
         name: manifestName,
@@ -354,8 +362,16 @@ class MetaGenerator {
         start_url: "/",
         icons: [
           {
-            src: iconUrl,
-            sizes: "any",
+            src: versionedIconUrl,
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+          {
+            src: versionedIconUrl,
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
           },
         ],
       };
