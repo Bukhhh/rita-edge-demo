@@ -4,6 +4,7 @@ import { CLEAR_ATTACHMENTS_EVENT, DndUploaderContext } from "./DnDWrapper";
 import PromptInput, {
   PROMPT_INPUT_EVENT,
   PROMPT_INPUT_ID,
+  RITA_BUILDER_RESET_EVENT,
 } from "./PromptInput";
 import Workspace from "@/models/workspace";
 import handleChat, { ABORT_STREAM_EVENT } from "@/utils/chat";
@@ -58,6 +59,7 @@ export default function ChatContainer({
   const pendingPromptRef = useRef(null);
   const pendingMessageChecked = useRef(false);
   const pendingResetRef = useRef(false);
+  const agentCancelRef = useRef(false);
   const agentSessionMetaRef = useRef(null);
 
   const { listening, resetTranscript } = useSpeechRecognition({
@@ -371,6 +373,7 @@ export default function ChatContainer({
   // TODO: Simplify this WSS stuff
   useEffect(() => {
     let socket = null;
+    let abortStreamHandler = null;
 
     function handleWSS() {
       try {
@@ -380,11 +383,44 @@ export default function ChatContainer({
         );
         socket.supportsAgentStreaming = false;
 
-        window.addEventListener(ABORT_STREAM_EVENT, () => {
+        abortStreamHandler = () => {
+          if (agentCancelRef.current) return;
+          agentCancelRef.current = true;
+          try {
+            if (socket?.readyState === WebSocket.OPEN) {
+              socket.send(
+                JSON.stringify({
+                  type: "awaitingFeedback",
+                  feedback: "/exit",
+                  attachments: [],
+                })
+              );
+            }
+          } catch (e) {
+            console.error("Failed to send agent cancellation", e);
+          }
           setAgentSessionActive(false);
           window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
+          window.dispatchEvent(new CustomEvent(RITA_BUILDER_RESET_EVENT));
+          setChatHistory((prev) => [
+            ...prev.filter((msg) => !!msg.content),
+            {
+              uuid: v4(),
+              content:
+                "RITA generation was cancelled. Adjust the request and generate again when you are ready.",
+              role: "assistant",
+              sources: [],
+              closed: true,
+              error: null,
+              animate: false,
+              pending: false,
+              metrics: {},
+            },
+          ]);
+          setLoadingResponse(false);
           socket?.close();
-        });
+        };
+        window.addEventListener(ABORT_STREAM_EVENT, abortStreamHandler);
 
         socket.addEventListener("message", (event) => {
           setLoadingResponse(true);
@@ -408,7 +444,9 @@ export default function ChatContainer({
             closedAgentSession?.lifecycle === "one_shot";
           // When the close was triggered by /reset, skip the "Agent session
           // complete." status - the pending /reset flow will clear history.
-          if (pendingResetRef.current) {
+          if (agentCancelRef.current) {
+            agentCancelRef.current = false;
+          } else if (pendingResetRef.current) {
             pendingResetRef.current = false;
           } else if (!isOneShotRitaTask) {
             setChatHistory((prev) => [
@@ -453,12 +491,16 @@ export default function ChatContainer({
         setLoadingResponse(false);
         setWebsocket(null);
         setSocketId(null);
+        agentCancelRef.current = false;
         agentSessionMetaRef.current = null;
       }
     }
     handleWSS();
 
     return () => {
+      if (abortStreamHandler) {
+        window.removeEventListener(ABORT_STREAM_EVENT, abortStreamHandler);
+      }
       if (socket) {
         setAgentSessionActive(false);
         window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));

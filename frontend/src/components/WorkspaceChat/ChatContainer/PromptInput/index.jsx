@@ -35,6 +35,7 @@ import RitaReportAgentImage from "@/media/rita-agents/rita-report-agent.jpg";
 
 export const PROMPT_INPUT_ID = "primary-prompt-input";
 export const PROMPT_INPUT_EVENT = "set_prompt_input";
+export const RITA_BUILDER_RESET_EVENT = "rita_builder_reset";
 const MAX_EDIT_STACK_SIZE = 100;
 
 /**
@@ -520,6 +521,19 @@ function RitaAgentBuilderPanel({
   useEffect(() => {
     setDismissedBuilderAgentId(null);
   }, [agent?.id]);
+
+  useEffect(() => {
+    function resetDismissedBuilder() {
+      setDismissedBuilderAgentId(null);
+    }
+
+    window.addEventListener(RITA_BUILDER_RESET_EVENT, resetDismissedBuilder);
+    return () =>
+      window.removeEventListener(
+        RITA_BUILDER_RESET_EVENT,
+        resetDismissedBuilder
+      );
+  }, []);
 
   if (!agent) return null;
   if (dismissedBuilderAgentId === agent.id) return null;
