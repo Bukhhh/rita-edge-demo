@@ -168,6 +168,7 @@ class CreateFilesManager {
     }
 
     aibitat._pendingOutputs.push({ type, payload });
+    aibitat.markRitaOneShotOutput?.(type, payload);
     console.log(
       `[CreateFilesManager] Registered output: type=${type}, total pending=${aibitat._pendingOutputs.length}`
     );

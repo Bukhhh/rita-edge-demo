@@ -6,6 +6,18 @@ const { Telemetry } = require("../../../models/telemetry.js");
 const { v4 } = require("uuid");
 const { ToolReranker } = require("./utils/toolReranker.js");
 
+const RITA_TERMINAL_FILE_TOOLS = new Set([
+  "create-chart-pdf-report",
+  "create-chart-image",
+  "create-matplotlib-chart",
+]);
+
+const RITA_TERMINAL_OUTPUT_TYPES = new Set([
+  "ChartPdfReport",
+  "ChartImage",
+  "MatplotlibChart",
+]);
+
 /**
  * AIbitat is a class that manages the conversation between agents.
  * It is designed to solve a task with LLM.
@@ -597,8 +609,50 @@ class AIbitat {
     return this.shouldAgentInterrupt(route.to);
   }
 
-  shouldReturnRitaOneShotToolResult(previousOutputCount = 0) {
+  isRitaOneShot() {
     if (this.handlerProps?.ritaAgent?.lifecycle !== "one_shot") return false;
+    return true;
+  }
+
+  isRitaTerminalFileTool(toolName = "") {
+    return RITA_TERMINAL_FILE_TOOLS.has(toolName);
+  }
+
+  markRitaOneShotOutput(type = "", payload = {}) {
+    if (!this.isRitaOneShot()) return;
+    if (!RITA_TERMINAL_OUTPUT_TYPES.has(type)) return;
+    this._ritaOneShotOutput = { type, payload };
+  }
+
+  registerRitaTerminalToolAttempt(toolName = "", args = {}) {
+    if (!this.isRitaOneShot() || !this.isRitaTerminalFileTool(toolName))
+      return { allowed: true, message: null };
+
+    if (this._ritaTerminalToolAttempt) {
+      const previousTool = this._ritaTerminalToolAttempt.toolName;
+      return {
+        allowed: false,
+        message:
+          `RITA already ran ${previousTool} for this request. ` +
+          "I will not run another file-generation tool for the same request.",
+      };
+    }
+
+    this._ritaTerminalToolAttempt = {
+      toolName,
+      args,
+      startedAt: Date.now(),
+    };
+    return { allowed: true, message: null };
+  }
+
+  shouldReturnRitaOneShotToolResult(
+    previousOutputCount = 0,
+    toolName = null
+  ) {
+    if (!this.isRitaOneShot()) return false;
+    if (this.isRitaTerminalFileTool(toolName)) return true;
+    if (this._ritaOneShotOutput) return true;
     const currentOutputCount = this._pendingOutputs?.length || 0;
     return currentOutputCount > previousOutputCount;
   }
@@ -962,6 +1016,31 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
         `[debug]: ${fn.caller} is attempting to call \`${name}\` tool ${JSON.stringify(args, null, 2)}`
       );
 
+      const ritaTerminalToolAttempt = this.registerRitaTerminalToolAttempt(
+        name,
+        args
+      );
+      if (!ritaTerminalToolAttempt.allowed) {
+        this?.introspect?.(ritaTerminalToolAttempt.message);
+        this.handlerProps?.log?.(
+          `[RITA] Blocked duplicate terminal tool call: ${name}`
+        );
+        const directOutputUUID = completionStream?.uuid || v4();
+        eventHandler?.("reportStreamEvent", {
+          type: "fullTextResponse",
+          uuid: directOutputUUID,
+          content: ritaTerminalToolAttempt.message,
+        });
+        eventHandler?.("reportStreamEvent", {
+          type: "usageMetrics",
+          uuid: directOutputUUID,
+          metrics: provider.getUsage(),
+        });
+        this?.flushCitations?.(directOutputUUID);
+        this?.emitChatId?.(directOutputUUID);
+        return ritaTerminalToolAttempt.message;
+      }
+
       const pendingOutputCount = this._pendingOutputs?.length || 0;
       const result = await fn.handler(args);
       Telemetry.sendTelemetry("agent_tool_call", { tool: name }, null, true);
@@ -1002,12 +1081,10 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
         return result;
       }
 
-      if (this.shouldReturnRitaOneShotToolResult(pendingOutputCount)) {
-        this?.introspect?.(
-          `RITA generated the requested file. Tool use completed.`
-        );
+      if (this.shouldReturnRitaOneShotToolResult(pendingOutputCount, name)) {
+        this?.introspect?.(`RITA finished the requested file task.`);
         this.handlerProps?.log?.(
-          `${fn.caller} generated a RITA one-shot output. Returning tool result without requesting another tool call.`
+          `${fn.caller} finished a RITA one-shot file task. Returning tool result without requesting another tool call.`
         );
         const directOutputUUID = completionStream?.uuid || v4();
         eventHandler?.("reportStreamEvent", {
@@ -1144,6 +1221,30 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
         `[debug]: ${fn.caller} is attempting to call \`${name}\` tool`
       );
 
+      const ritaTerminalToolAttempt = this.registerRitaTerminalToolAttempt(
+        name,
+        args
+      );
+      if (!ritaTerminalToolAttempt.allowed) {
+        this?.introspect?.(ritaTerminalToolAttempt.message);
+        this.handlerProps?.log?.(
+          `[RITA] Blocked duplicate terminal tool call: ${name}`
+        );
+        eventHandler?.("reportStreamEvent", {
+          type: "fullTextResponse",
+          uuid: msgUUID,
+          content: ritaTerminalToolAttempt.message,
+        });
+        eventHandler?.("reportStreamEvent", {
+          type: "usageMetrics",
+          uuid: msgUUID,
+          metrics: provider.getUsage(),
+        });
+        this?.flushCitations?.(msgUUID);
+        this?.emitChatId?.(msgUUID);
+        return ritaTerminalToolAttempt.message;
+      }
+
       const pendingOutputCount = this._pendingOutputs?.length || 0;
       const result = await fn.handler(args);
       Telemetry.sendTelemetry("agent_tool_call", { tool: name }, null, true);
@@ -1171,12 +1272,10 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
         return result;
       }
 
-      if (this.shouldReturnRitaOneShotToolResult(pendingOutputCount)) {
-        this?.introspect?.(
-          `RITA generated the requested file. Tool use completed.`
-        );
+      if (this.shouldReturnRitaOneShotToolResult(pendingOutputCount, name)) {
+        this?.introspect?.(`RITA finished the requested file task.`);
         this.handlerProps?.log?.(
-          `${fn.caller} generated a RITA one-shot output. Returning tool result without requesting another tool call.`
+          `${fn.caller} finished a RITA one-shot file task. Returning tool result without requesting another tool call.`
         );
         eventHandler?.("reportStreamEvent", {
           type: "fullTextResponse",

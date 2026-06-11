@@ -98,6 +98,7 @@ function ritaAgentRuntimeRules(ritaAgent = {}) {
       "- When the user asks for a PDF report with charts, call create-chart-pdf-report. Do not only describe that you will call it.",
       "- If chart data can be reasonably extracted from attached_documents or workspace context, build structured chart specs and call the tool immediately.",
       "- If the requested chart data is not explicit, choose practical chart labels/values from the document profile and state assumptions in the report sections.",
+      "- create-chart-pdf-report is terminal for this request. After calling it, do not call another file-generation tool.",
       "- Only reply in plain text instead of calling a tool when no data/context exists or the user explicitly asks for explanation only.",
     ].join("\n");
   }
@@ -110,6 +111,7 @@ function ritaAgentRuntimeRules(ritaAgent = {}) {
       "- Do not only describe that you will create a graph. Generate the requested file using the tool.",
       "- Do not write Python code for normal graph requests. Extract labels and numeric values from attached_documents or workspace context and pass them as tool arguments.",
       "- Create exactly one graph unless the user explicitly asks otherwise.",
+      "- create-chart-image and create-chart-pdf-report are terminal for this request. After calling one of them, do not call another file-generation tool.",
     ].join("\n");
   }
 
