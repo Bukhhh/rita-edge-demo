@@ -597,6 +597,12 @@ class AIbitat {
     return this.shouldAgentInterrupt(route.to);
   }
 
+  shouldReturnRitaOneShotToolResult(previousOutputCount = 0) {
+    if (this.handlerProps?.ritaAgent?.lifecycle !== "one_shot") return false;
+    const currentOutputCount = this._pendingOutputs?.length || 0;
+    return currentOutputCount > previousOutputCount;
+  }
+
   /**
    * Select the next node to chat with from a group. The node will be selected based on the history of chats.
    * It will select the node that has not reached the maximum number of rounds yet and has not chatted with the channel in the last round.
@@ -956,6 +962,7 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
         `[debug]: ${fn.caller} is attempting to call \`${name}\` tool ${JSON.stringify(args, null, 2)}`
       );
 
+      const pendingOutputCount = this._pendingOutputs?.length || 0;
       const result = await fn.handler(args);
       Telemetry.sendTelemetry("agent_tool_call", { tool: name }, null, true);
       this.emitter.emit("toolCallResult", {
@@ -978,6 +985,29 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
         this?.introspect?.(`Tool use completed.`);
         this.handlerProps?.log?.(
           `${fn.caller} tool call resulted in direct output! Returning raw result as string. NO MORE TOOL CALLS WILL BE EXECUTED.`
+        );
+        const directOutputUUID = completionStream?.uuid || v4();
+        eventHandler?.("reportStreamEvent", {
+          type: "fullTextResponse",
+          uuid: directOutputUUID,
+          content: result,
+        });
+        eventHandler?.("reportStreamEvent", {
+          type: "usageMetrics",
+          uuid: directOutputUUID,
+          metrics: provider.getUsage(),
+        });
+        this?.flushCitations?.(directOutputUUID);
+        this?.emitChatId?.(directOutputUUID);
+        return result;
+      }
+
+      if (this.shouldReturnRitaOneShotToolResult(pendingOutputCount)) {
+        this?.introspect?.(
+          `RITA generated the requested file. Tool use completed.`
+        );
+        this.handlerProps?.log?.(
+          `${fn.caller} generated a RITA one-shot output. Returning tool result without requesting another tool call.`
         );
         const directOutputUUID = completionStream?.uuid || v4();
         eventHandler?.("reportStreamEvent", {
@@ -1114,6 +1144,7 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
         `[debug]: ${fn.caller} is attempting to call \`${name}\` tool`
       );
 
+      const pendingOutputCount = this._pendingOutputs?.length || 0;
       const result = await fn.handler(args);
       Telemetry.sendTelemetry("agent_tool_call", { tool: name }, null, true);
       this.emitter.emit("toolCallResult", {
@@ -1137,6 +1168,28 @@ https://docs.anythingllm.com/agent/intelligent-tool-selection
           metrics: provider.getUsage(),
         });
         this?.flushCitations?.(msgUUID);
+        return result;
+      }
+
+      if (this.shouldReturnRitaOneShotToolResult(pendingOutputCount)) {
+        this?.introspect?.(
+          `RITA generated the requested file. Tool use completed.`
+        );
+        this.handlerProps?.log?.(
+          `${fn.caller} generated a RITA one-shot output. Returning tool result without requesting another tool call.`
+        );
+        eventHandler?.("reportStreamEvent", {
+          type: "fullTextResponse",
+          uuid: msgUUID,
+          content: result,
+        });
+        eventHandler?.("reportStreamEvent", {
+          type: "usageMetrics",
+          uuid: msgUUID,
+          metrics: provider.getUsage(),
+        });
+        this?.flushCitations?.(msgUUID);
+        this?.emitChatId?.(msgUUID);
         return result;
       }
 

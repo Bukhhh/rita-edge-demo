@@ -107,6 +107,7 @@ function ritaAgentRuntimeRules(ritaAgent = {}) {
       "Runtime rules:",
       "- When the user asks for a graph/chart output, call create-matplotlib-chart for image output or create-chart-pdf-report for PDF output.",
       "- Do not only describe that you will create a graph. Generate the requested file using the tool.",
+      "- Do not import uploaded documents as Python modules. Extract labels and numeric values from attached_documents or workspace context and inline them in the tool arguments.",
       "- Create exactly one graph unless the user explicitly asks otherwise.",
     ].join("\n");
   }

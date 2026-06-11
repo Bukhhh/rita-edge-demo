@@ -21,6 +21,7 @@ module.exports.CreateMatplotlibChart = {
             "Create a high-quality chart image by running a Python script that uses matplotlib. " +
             "Use this when the requested visualization needs precise styling, annotations, multiple subplots, statistical plots, or richer chart formatting than the default chart tool. " +
             "The Python script must save the final figure to the output path provided in the RITA_MATPLOTLIB_OUTPUT environment variable. " +
+            "Do not import uploaded documents as Python modules; extract labels and values from context and inline them in the script. " +
             "Do not read or write arbitrary local files, use network access, install packages, or create interactive windows.",
           examples: [
             {
@@ -62,7 +63,8 @@ module.exports.CreateMatplotlibChart = {
               code: {
                 type: "string",
                 description:
-                  "Complete Python matplotlib script using plain ASCII quotes. The script can use matplotlib, numpy, pandas if installed, and standard Python. Save the final figure with fig.savefig(output_path, bbox_inches='tight') or plt.savefig(output_path, bbox_inches='tight'). The variable output_path is provided by the tool.",
+                  "Complete Python matplotlib script using plain ASCII quotes. The script can use matplotlib, numpy, pandas if installed, and standard Python. Save the final figure with fig.savefig(output_path, bbox_inches='tight') or plt.savefig(output_path, bbox_inches='tight'). The variable output_path is provided by the tool. " +
+                  "Do not import uploaded documents or workspace files as Python modules. Inline chart labels and numeric values directly from the available context.",
               },
             },
             required: ["filename", "code"],
@@ -85,7 +87,17 @@ module.exports.CreateMatplotlibChart = {
                 extension
               );
 
-              if (!code.trim()) return "No Python code was provided.";
+              const cleanCode = sanitizeMatplotlibCode(code);
+              if (!cleanCode.trim()) return "No Python code was provided.";
+
+              const unsupportedImport = findUnsupportedLocalImport(cleanCode);
+              if (unsupportedImport) {
+                return (
+                  `Python chart code cannot import uploaded documents as local modules (${unsupportedImport}). ` +
+                  "Use the extracted document context to inline labels and numeric values directly in the Python code, then call this tool again. " +
+                  "Example: labels = ['Restaurants', 'Monthly customers']; values = [370, 13500000]."
+                );
+              }
 
               if (this.super.requestToolApproval) {
                 const approval = await this.super.requestToolApproval({
@@ -107,7 +119,7 @@ module.exports.CreateMatplotlibChart = {
               const scriptPath = path.join(runDirectory, "chart.py");
               const outputPath = path.join(runDirectory, `chart.${extension}`);
 
-              await fs.writeFile(scriptPath, buildScript(code), "utf8");
+              await fs.writeFile(scriptPath, buildScript(cleanCode), "utf8");
 
               this.super.introspect(
                 `${this.caller}: Running matplotlib script for "${displayFilename}"`
@@ -177,13 +189,14 @@ module.exports.CreateMatplotlibChart = {
 };
 
 function buildScript(userCode) {
+  const code = ensureOutputSavefig(userCode);
   return [
     "import os",
     "import matplotlib",
     "matplotlib.use('Agg')",
     "output_path = os.environ['RITA_MATPLOTLIB_OUTPUT']",
     "",
-    sanitizeMatplotlibCode(userCode),
+    code,
     "",
   ].join("\n");
 }
@@ -194,8 +207,44 @@ function sanitizeMatplotlibCode(userCode) {
     .trim()
     .replace(/^```(?:python|py)?\s*/i, "")
     .replace(/\s*```$/i, "")
+    .replace(/^:::(?:python|py)?\s*/i, "")
+    .replace(/\s*:::$/i, "")
+    .replace(/\)\s+(?=(?:plt|ax|fig)\.)/g, ")\n")
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201c\u201d]/g, '"');
+}
+
+function ensureOutputSavefig(userCode) {
+  const code = String(userCode || "").trim();
+  if (/\bsavefig\s*\(/.test(code)) return code;
+
+  return `${code}\nplt.savefig(output_path, bbox_inches='tight')`;
+}
+
+function findUnsupportedLocalImport(userCode) {
+  const allowedModules = new Set([
+    "collections",
+    "datetime",
+    "itertools",
+    "json",
+    "math",
+    "matplotlib",
+    "numpy",
+    "os",
+    "pandas",
+    "re",
+    "statistics",
+  ]);
+
+  const importPattern =
+    /^\s*(?:from\s+([A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))/gm;
+  let match;
+  while ((match = importPattern.exec(userCode)) !== null) {
+    const moduleName = (match[1] || match[2] || "").split(".")[0];
+    if (moduleName && !allowedModules.has(moduleName)) return moduleName;
+  }
+
+  return null;
 }
 
 function normalizeEscapedPythonCode(userCode) {
