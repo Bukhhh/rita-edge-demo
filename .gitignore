@@ -8,5 +8,8 @@ v-env
 .DS_Store
 aws_cf_deploy_anything_llm.json
 yarn.lock
+!frontend/yarn.lock
+!server/yarn.lock
+!collector/yarn.lock
 *.bak
 .idea
