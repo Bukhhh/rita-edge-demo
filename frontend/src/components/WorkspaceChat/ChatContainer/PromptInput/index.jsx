@@ -570,6 +570,10 @@ function ReportAgentBuilder({
   );
   const [output, setOutput] = useState("pdf");
   const [builderError, setBuilderError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const contextState = getRitaBuilderContextState(attachments, promptInput);
+  const generateDisabled =
+    disabled || isSubmitting || Boolean(contextState.blocker);
 
   function toggleAnalysis(value) {
     setAnalysis((prev) => {
@@ -604,13 +608,12 @@ function ReportAgentBuilder({
   }
 
   function generateReport() {
-    if (disabled) return;
-    const fileBlocker = getRitaBuilderFileBlocker(attachments);
-    if (fileBlocker) {
-      setBuilderError(fileBlocker);
+    if (generateDisabled) {
+      if (contextState.blocker) setBuilderError(contextState.blocker);
       return;
     }
     setBuilderError(null);
+    setIsSubmitting(true);
     const extra = promptInput.trim();
     const prompt = buildReportAgentPrompt({
       analysis: [...analysis],
@@ -635,6 +638,7 @@ function ReportAgentBuilder({
         Upload your PDF/document using the attach button, choose the report
         options, then add extra notes in chat if needed.
       </BuilderHint>
+      <BuilderContextStatus state={contextState} />
       <BuilderSection label="Report focus">
         <div className="flex flex-wrap gap-1.5">
           {ANALYSIS_OPTIONS.map((option) => (
@@ -695,14 +699,19 @@ function ReportAgentBuilder({
       <button
         type="button"
         onClick={generateReport}
-        disabled={disabled}
+        disabled={generateDisabled}
         className={`w-full rounded-md text-xs font-semibold px-3 py-2 transition-colors ${
-          disabled
+          generateDisabled
             ? "cursor-not-allowed bg-zinc-700 light:bg-slate-300 text-zinc-400 light:text-slate-500"
             : "bg-white hover:bg-zinc-200 light:bg-slate-800 light:hover:bg-slate-700 text-zinc-900 light:text-white"
         }`}
       >
-        {disabled ? "Waiting for file/context..." : "Generate Report"}
+        {builderButtonLabel({
+          disabled,
+          isSubmitting,
+          contextState,
+          readyLabel: "Generate Report",
+        })}
       </button>
     </BuilderPanel>
   );
@@ -724,15 +733,18 @@ function GraphAgentBuilder({
   );
   const [output, setOutput] = useState("png");
   const [builderError, setBuilderError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const contextState = getRitaBuilderContextState(attachments, promptInput);
+  const generateDisabled =
+    disabled || isSubmitting || Boolean(contextState.blocker);
 
   function generateGraph() {
-    if (disabled) return;
-    const fileBlocker = getRitaBuilderFileBlocker(attachments);
-    if (fileBlocker) {
-      setBuilderError(fileBlocker);
+    if (generateDisabled) {
+      if (contextState.blocker) setBuilderError(contextState.blocker);
       return;
     }
     setBuilderError(null);
+    setIsSubmitting(true);
     const extra = promptInput.trim();
     const prompt = buildGraphAgentPrompt({
       focus,
@@ -757,6 +769,7 @@ function GraphAgentBuilder({
         Graph Agent creates exactly one graph. Upload a document or describe the
         data in chat, then choose the chart and output.
       </BuilderHint>
+      <BuilderContextStatus state={contextState} />
       <BuilderSection label="Data to analyse">
         <input
           type="text"
@@ -798,14 +811,19 @@ function GraphAgentBuilder({
       <button
         type="button"
         onClick={generateGraph}
-        disabled={disabled}
+        disabled={generateDisabled}
         className={`w-full rounded-md text-xs font-semibold px-3 py-2 transition-colors ${
-          disabled
+          generateDisabled
             ? "cursor-not-allowed bg-zinc-700 light:bg-slate-300 text-zinc-400 light:text-slate-500"
             : "bg-white hover:bg-zinc-200 light:bg-slate-800 light:hover:bg-slate-700 text-zinc-900 light:text-white"
         }`}
       >
-        {disabled ? "Waiting for file/context..." : "Generate One Graph"}
+        {builderButtonLabel({
+          disabled,
+          isSubmitting,
+          contextState,
+          readyLabel: "Generate One Graph",
+        })}
       </button>
     </BuilderPanel>
   );
@@ -902,6 +920,28 @@ function BuilderError({ children }) {
   return (
     <div className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-200 light:text-red-700 light:bg-red-50 light:border-red-200">
       {children}
+    </div>
+  );
+}
+
+function BuilderContextStatus({ state }) {
+  const classes = {
+    ready:
+      "border-green-400/30 bg-green-500/10 text-green-200 light:text-green-700 light:bg-green-50 light:border-green-200",
+    working:
+      "border-amber-400/30 bg-amber-500/10 text-amber-100 light:text-amber-700 light:bg-amber-50 light:border-amber-200",
+    blocked:
+      "border-red-400/30 bg-red-500/10 text-red-200 light:text-red-700 light:bg-red-50 light:border-red-200",
+    neutral:
+      "border-zinc-700 bg-zinc-800/60 text-zinc-300 light:border-slate-300 light:bg-slate-100 light:text-slate-700",
+  };
+
+  return (
+    <div
+      className={`rounded-md border px-3 py-2 text-[11px] leading-relaxed ${classes[state.tone] || classes.neutral}`}
+    >
+      <div className="font-semibold">{state.title}</div>
+      <div>{state.message}</div>
     </div>
   );
 }
@@ -1155,25 +1195,93 @@ function useIsDisabled(attachments = []) {
   return { isDisabled };
 }
 
-function getRitaBuilderFileBlocker(attachments = []) {
+function getRitaBuilderContextState(attachments = [], promptInput = "") {
   const documentAttachments = attachments.filter(
     (attachment) => attachment.type === "upload"
   );
-  if (!documentAttachments.length) return null;
+  const typedContext = promptInput.trim().length > 0;
+
+  if (!documentAttachments.length) {
+    return typedContext
+      ? {
+          tone: "ready",
+          title: "Context ready",
+          message:
+            "RITA will use your typed instructions as the source context for this request.",
+          blocker: null,
+        }
+      : {
+          tone: "neutral",
+          title: "No file attached",
+          message:
+            "RITA can still use workspace knowledge if available, or you can attach a PDF, CSV, Excel, or Word file first.",
+          blocker: null,
+        };
+  }
 
   const processing = documentAttachments.find(
     (attachment) => attachment.status === "in_progress"
   );
   if (processing) {
-    return `RITA is still preparing "${processing.file?.name || "your file"}". Please wait a moment before generating.`;
+    const fileName = processing.file?.name || processing.name || "your file";
+    return {
+      tone: "working",
+      title: "Preparing file context",
+      message: `RITA is still reading "${fileName}". Generate will unlock when the file is ready.`,
+      blocker: `RITA is still preparing "${fileName}". Please wait a moment before generating.`,
+    };
   }
 
   const failed = documentAttachments.find(
     (attachment) => attachment.status === "failed"
   );
   if (failed) {
-    return `RITA could not read "${failed.file?.name || "this file"}" properly. Please upload a clearer PDF, CSV, Excel, or Word file.`;
+    const fileName = failed.file?.name || failed.name || "this file";
+    return {
+      tone: "blocked",
+      title: "File cannot be used",
+      message: `RITA could not read "${fileName}" properly. Upload a clearer PDF, CSV, Excel, or Word file.`,
+      blocker: `RITA could not read "${fileName}" properly. Please upload a clearer PDF, CSV, Excel, or Word file.`,
+    };
   }
 
-  return null;
+  const readyFiles = documentAttachments.filter((attachment) =>
+    ["added_context", "embedded", "success"].includes(attachment.status)
+  );
+  if (readyFiles.length === documentAttachments.length) {
+    const names = readyFiles
+      .map((attachment) => attachment.file?.name || attachment.name)
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(", ");
+    return {
+      tone: "ready",
+      title: "Context ready",
+      message:
+        readyFiles.length === 1
+          ? `RITA can use ${names || "the attached file"} as reference for this request.`
+          : `RITA can use ${readyFiles.length} attached files as references for this request.`,
+      blocker: null,
+    };
+  }
+
+  return {
+    tone: "working",
+    title: "Checking file context",
+    message: "RITA is checking whether the attached files can be used.",
+    blocker:
+      "RITA is still checking the attached files. Please wait a moment before generating.",
+  };
+}
+
+function builderButtonLabel({
+  disabled,
+  isSubmitting,
+  contextState,
+  readyLabel = "Generate",
+}) {
+  if (isSubmitting) return "Starting RITA...";
+  if (disabled) return "Waiting for RITA...";
+  if (contextState?.blocker) return "Waiting for file/context...";
+  return readyLabel;
 }
