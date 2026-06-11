@@ -438,12 +438,53 @@ ${JSON.stringify(def.parameters.properties, null, 4)}\n`;
 }
 
 function sanitizeToolCallJsonResponse(response) {
-  return String(response || "")
+  const cleaned = String(response || "")
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
+    .replace(/^JSON\s*:\s*/i, "")
     .replace(/[\u201c\u201d]/g, '"')
     .replace(/[\u2018\u2019]/g, "'");
+
+  return extractFirstJsonObject(cleaned);
+}
+
+function extractFirstJsonObject(text) {
+  const start = text.indexOf("{");
+  if (start === -1) return text;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === "{") depth++;
+    if (char === "}") depth--;
+
+    if (depth === 0) return text.slice(start, i + 1);
+  }
+
+  return text;
 }
 
 module.exports = UnTooled;
+module.exports.sanitizeToolCallJsonResponse = sanitizeToolCallJsonResponse;

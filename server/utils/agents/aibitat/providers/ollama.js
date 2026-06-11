@@ -1,6 +1,9 @@
 const Provider = require("./ai-provider.js");
 const InheritMultiple = require("./helpers/classes.js");
 const UnTooled = require("./helpers/untooled.js");
+const {
+  sanitizeToolCallJsonResponse,
+} = require("./helpers/untooled.js");
 const { formatFunctionsToTools } = require("./helpers/tooled.js");
 const { OllamaAILLM } = require("../../../AiProviders/ollama");
 const { Ollama } = require("ollama");
@@ -254,7 +257,10 @@ class OllamaProvider extends InheritMultiple([Provider, UnTooled]) {
       });
     }
 
-    const call = safeJsonParse(textResponse, null);
+    const call = safeJsonParse(
+      sanitizeToolCallJsonResponse(textResponse),
+      null
+    );
     if (call === null)
       return { toolCall: null, text: textResponse, uuid: msgUUID }; // failed to parse, so must be regular text response.
 
