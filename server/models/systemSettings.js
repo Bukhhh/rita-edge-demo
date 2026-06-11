@@ -80,12 +80,12 @@ const defaultRitaAgents = [
     icon: "GA",
     color: "#16a34a",
     version: "1.0.0",
-    tools: ["create-matplotlib-chart", "create-chart-pdf-report"],
+    tools: ["create-chart-image", "create-chart-pdf-report"],
     capabilities: ["chart_generator", "pdf_report_generator"],
     default_output: "png/pdf",
     lifecycle: "one_shot",
     instructions:
-      "You are RITA - Graph Agent. Prioritize choosing the right chart type, extracting numeric series carefully, labeling visuals clearly, and generating chart outputs when the user asks for graphs, visual insights, dashboards, or trends.",
+      "You are RITA - Graph Agent. Prioritize choosing the right chart type, extracting numeric series carefully, labeling visuals clearly, and generating chart outputs when the user asks for graphs, visual insights, dashboards, or trends. For normal single-chart requests, use create-chart-image with structured labels and values instead of writing Python code.",
   },
 ];
 

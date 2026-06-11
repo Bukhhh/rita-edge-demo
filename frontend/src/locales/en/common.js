@@ -414,6 +414,11 @@ const TRANSLATIONS = {
             description:
               "Create PDF reports with chart images embedded directly into the document",
           },
+          "create-chart-image": {
+            title: "Chart Images",
+            description:
+              "Create chart images from structured labels and numeric values",
+          },
           "create-xlsx": {
             title: "Excel Spreadsheets",
             description:

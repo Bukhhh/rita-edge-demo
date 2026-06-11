@@ -852,7 +852,7 @@ function buildGraphAgentPrompt({ focus, chartType, output, extra }) {
     `Chart type: ${chartType}.`,
     `Output: ${output}.`,
     output === "png"
-      ? "Call create-matplotlib-chart to generate the PNG file. Do not only describe the chart plan."
+      ? "Call create-chart-image with structured labels and numeric values to generate the PNG file. Do not write Python code and do not only describe the chart plan."
       : "Call create-chart-pdf-report to generate a one-chart PDF output. Do not only describe the chart plan.",
     "This is an execution request, not a planning request.",
     "Include a short plain-language insight explaining the graph.",

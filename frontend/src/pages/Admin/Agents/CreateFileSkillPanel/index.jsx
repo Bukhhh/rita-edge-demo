@@ -42,6 +42,14 @@ export const getCreateFileSkills = (t) => [
     icon: ChartLine,
   },
   {
+    name: "create-chart-image",
+    title: t("agent.skill.createFiles.skills.create-chart-image.title"),
+    description: t(
+      "agent.skill.createFiles.skills.create-chart-image.description"
+    ),
+    icon: ChartLine,
+  },
+  {
     name: "create-excel-file",
     title: t("agent.skill.createFiles.skills.create-xlsx.title"),
     description: t("agent.skill.createFiles.skills.create-xlsx.description"),

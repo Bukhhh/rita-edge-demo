@@ -105,9 +105,10 @@ function ritaAgentRuntimeRules(ritaAgent = {}) {
   if (ritaAgent.id === "rita-graph-agent") {
     return [
       "Runtime rules:",
-      "- When the user asks for a graph/chart output, call create-matplotlib-chart for image output or create-chart-pdf-report for PDF output.",
+      "- When the user asks for a graph/chart image output, call create-chart-image with structured labels and numeric values.",
+      "- When the user asks for graph/chart PDF output, call create-chart-pdf-report with exactly one chart.",
       "- Do not only describe that you will create a graph. Generate the requested file using the tool.",
-      "- Do not import uploaded documents as Python modules. Extract labels and numeric values from attached_documents or workspace context and inline them in the tool arguments.",
+      "- Do not write Python code for normal graph requests. Extract labels and numeric values from attached_documents or workspace context and pass them as tool arguments.",
       "- Create exactly one graph unless the user explicitly asks otherwise.",
     ].join("\n");
   }
