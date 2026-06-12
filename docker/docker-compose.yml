@@ -7,6 +7,7 @@ networks:
 services:
   rita-edge:
     container_name: rita-edge
+    restart: unless-stopped
     build:
       context: ../.
       dockerfile: ./docker/Dockerfile
