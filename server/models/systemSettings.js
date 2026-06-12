@@ -38,6 +38,8 @@ const defaultRitaCapabilities = {
   report_builder: true,
   chart_generator: true,
   pdf_report_generator: true,
+  context_visibility: true,
+  strict_data_matching: true,
 };
 
 const defaultRitaProviderControls = {

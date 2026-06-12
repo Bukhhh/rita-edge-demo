@@ -646,10 +646,7 @@ class AIbitat {
     return { allowed: true, message: null };
   }
 
-  shouldReturnRitaOneShotToolResult(
-    previousOutputCount = 0,
-    toolName = null
-  ) {
+  shouldReturnRitaOneShotToolResult(previousOutputCount = 0, toolName = null) {
     if (!this.isRitaOneShot()) return false;
     if (this.isRitaTerminalFileTool(toolName)) return true;
     if (this._ritaOneShotOutput) return true;
@@ -843,7 +840,35 @@ ${this.getHistory({ to: route.to })
 
     // Fetch fresh parsed file context and inject into the last user message
     if (this.fetchParsedFileContext) {
-      const parsedContext = await this.fetchParsedFileContext();
+      const parsedContextResult = await this.fetchParsedFileContext();
+      const parsedContext =
+        typeof parsedContextResult === "string"
+          ? parsedContextResult
+          : parsedContextResult?.context || "";
+
+      if (parsedContextResult?.statusMessage) {
+        this?.introspect?.(parsedContextResult.statusMessage);
+      }
+
+      if (parsedContextResult?.blocked) {
+        const content =
+          parsedContextResult.blockMessage ||
+          "I'm sorry, but the available data does not match or support your request. Please upload a clearer matching file and try again.";
+        const responseUuid = v4();
+        this.socket?.send?.("reportStreamEvent", {
+          type: "fullTextResponse",
+          uuid: responseUuid,
+          content,
+        });
+        this.socket?.send?.("reportStreamEvent", {
+          type: "usageMetrics",
+          uuid: responseUuid,
+          metrics: {},
+        });
+        this.newMessage({ ...route, content });
+        return content;
+      }
+
       if (parsedContext) {
         // Find the last user message and append context to it
         for (let i = chatHistory.length - 1; i >= 0; i--) {

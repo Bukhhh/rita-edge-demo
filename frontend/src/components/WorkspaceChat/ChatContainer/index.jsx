@@ -42,6 +42,35 @@ import {
   visibleAttachmentsFromFiles,
 } from "./attachmentUtils";
 
+const RITA_ONE_SHOT_SETTLE_DELAY_MS = 1_500;
+const RITA_AGENT_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
+
+function isOneShotRitaSession(session = null) {
+  return session?.type === "rita_agent" && session?.lifecycle === "one_shot";
+}
+
+function isTerminalRitaOneShotEvent(data = null) {
+  if (!data) return false;
+  if (data.type === "wssFailure") return true;
+  if (data.type !== "reportStreamEvent") return false;
+  return data.content?.type === "fullTextResponse";
+}
+
+function settlePendingAgentMessages(messages = []) {
+  return messages
+    .filter((msg) => !!msg.content)
+    .map((msg) => {
+      if (msg.type !== "statusResponse" && msg.type !== "toolApprovalRequest")
+        return msg;
+      return {
+        ...msg,
+        closed: true,
+        animate: false,
+        pending: false,
+      };
+    });
+}
+
 export default function ChatContainer({
   workspace,
   threadSlug = null,
@@ -374,6 +403,45 @@ export default function ChatContainer({
   useEffect(() => {
     let socket = null;
     let abortStreamHandler = null;
+    let idleTimeout = null;
+    let settleTimeout = null;
+
+    const clearIdleTimeout = () => {
+      if (!idleTimeout) return;
+      window.clearTimeout(idleTimeout);
+      idleTimeout = null;
+    };
+
+    const resetIdleTimeout = () => {
+      clearIdleTimeout();
+      idleTimeout = window.setTimeout(() => {
+        setAgentSessionActive(false);
+        window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
+        setChatHistory((prev) => [
+          ...settlePendingAgentMessages(prev),
+          {
+            uuid: v4(),
+            type: "abort",
+            content:
+              "RITA stopped responding before the request completed. Please try again with a smaller file or a narrower request.",
+            role: "assistant",
+            sources: [],
+            closed: true,
+            error: "RITA stopped responding.",
+            animate: false,
+            pending: false,
+          },
+        ]);
+        setLoadingResponse(false);
+        socket?.close();
+      }, RITA_AGENT_IDLE_TIMEOUT_MS);
+    };
+
+    const clearSettleTimeout = () => {
+      if (!settleTimeout) return;
+      window.clearTimeout(settleTimeout);
+      settleTimeout = null;
+    };
 
     function handleWSS() {
       try {
@@ -423,9 +491,22 @@ export default function ChatContainer({
         window.addEventListener(ABORT_STREAM_EVENT, abortStreamHandler);
 
         socket.addEventListener("message", (event) => {
+          resetIdleTimeout();
           setLoadingResponse(true);
           try {
+            const data = safeJsonParse(event.data, null);
             handleSocketResponse(socket, event, setChatHistory);
+            if (
+              isOneShotRitaSession(agentSessionMetaRef.current) &&
+              isTerminalRitaOneShotEvent(data)
+            ) {
+              setChatHistory((prev) => settlePendingAgentMessages(prev));
+              setLoadingResponse(false);
+              clearSettleTimeout();
+              settleTimeout = window.setTimeout(() => {
+                if (socket?.readyState === WebSocket.OPEN) socket.close();
+              }, RITA_ONE_SHOT_SETTLE_DELAY_MS);
+            }
           } catch {
             console.error("Failed to parse data");
             setAgentSessionActive(false);
@@ -436,21 +517,23 @@ export default function ChatContainer({
         });
 
         socket.addEventListener("close", (_event) => {
+          clearIdleTimeout();
+          clearSettleTimeout();
           setAgentSessionActive(false);
           window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
           const closedAgentSession = agentSessionMetaRef.current;
-          const isOneShotRitaTask =
-            closedAgentSession?.type === "rita_agent" &&
-            closedAgentSession?.lifecycle === "one_shot";
+          const isOneShotRitaTask = isOneShotRitaSession(closedAgentSession);
           // When the close was triggered by /reset, skip the "Agent session
           // complete." status - the pending /reset flow will clear history.
           if (agentCancelRef.current) {
+            setChatHistory((prev) => settlePendingAgentMessages(prev));
             agentCancelRef.current = false;
           } else if (pendingResetRef.current) {
+            setChatHistory((prev) => settlePendingAgentMessages(prev));
             pendingResetRef.current = false;
           } else if (!isOneShotRitaTask) {
             setChatHistory((prev) => [
-              ...prev.filter((msg) => !!msg.content),
+              ...settlePendingAgentMessages(prev),
               {
                 uuid: v4(),
                 type: "statusResponse",
@@ -463,6 +546,8 @@ export default function ChatContainer({
                 pending: false,
               },
             ]);
+          } else {
+            setChatHistory((prev) => settlePendingAgentMessages(prev));
           }
           setLoadingResponse(false);
           setWebsocket(null);
@@ -471,11 +556,14 @@ export default function ChatContainer({
         });
         setWebsocket(socket);
         setAgentSessionActive(true);
+        resetIdleTimeout();
         window.dispatchEvent(new CustomEvent(AGENT_SESSION_START));
         window.dispatchEvent(new CustomEvent(CLEAR_ATTACHMENTS_EVENT));
       } catch (e) {
+        clearIdleTimeout();
+        clearSettleTimeout();
         setChatHistory((prev) => [
-          ...prev.filter((msg) => !!msg.content),
+          ...settlePendingAgentMessages(prev),
           {
             uuid: v4(),
             type: "abort",
@@ -501,6 +589,8 @@ export default function ChatContainer({
       if (abortStreamHandler) {
         window.removeEventListener(ABORT_STREAM_EVENT, abortStreamHandler);
       }
+      clearIdleTimeout();
+      clearSettleTimeout();
       if (socket) {
         setAgentSessionActive(false);
         window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));

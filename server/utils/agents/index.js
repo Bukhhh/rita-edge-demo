@@ -8,6 +8,7 @@ const { Document } = require("../../models/documents");
 const { User } = require("../../models/user");
 const { Workspace } = require("../../models/workspace");
 const { WorkspaceChats } = require("../../models/workspaceChats");
+const { SystemSettings } = require("../../models/systemSettings");
 const { safeJsonParse } = require("../http");
 const { fileData } = require("../files");
 const {
@@ -15,6 +16,7 @@ const {
   buildDocumentProfile,
   DEFAULT_DOCUMENT_CONTEXT_CHARS,
 } = require("../rita/documentProfile");
+const { evaluateRitaContext } = require("../rita/contextGuard");
 const { USER_AGENT, WORKSPACE_AGENT } = require("./defaults");
 const ImportedPlugin = require("./imported");
 const { AgentFlows } = require("../agentFlows");
@@ -868,6 +870,37 @@ class AgentHandler {
     );
   }
 
+  async #evaluateRitaContext({
+    documents = [],
+    unavailable = [],
+    requestedCount = 0,
+  } = {}) {
+    const capabilities = await SystemSettings.ritaCapabilities();
+    const decision = evaluateRitaContext({
+      prompt: this.invocation.prompt,
+      documents,
+      unavailable,
+      requestedCount,
+      ritaAgent: this.ritaAgent,
+      strictDataMatching: capabilities.strict_data_matching !== false,
+    });
+
+    return {
+      ...decision,
+      showContextStatus: capabilities.context_visibility !== false,
+    };
+  }
+
+  #contextResult(context = "", decision = null) {
+    if (!decision?.applies) return context;
+    return {
+      context: [context, decision.contextInstruction].filter(Boolean).join(""),
+      blocked: decision.blocked,
+      blockMessage: decision.blockMessage,
+      statusMessage: decision.showContextStatus ? decision.statusMessage : null,
+    };
+  }
+
   /**
    * Fetch fresh parsed files and pinned documents, format them for injection into user messages.
    * Called on every chat turn to ensure context is always up-to-date.
@@ -890,11 +923,17 @@ class AgentHandler {
           explicitContext.requestedCount > 0 &&
           explicitContext.documents.length === 0
         ) {
-          return (
+          const decision = await this.#evaluateRitaContext({
+            documents: [],
+            unavailable: explicitContext.unavailable,
+            requestedCount: explicitContext.requestedCount,
+          });
+          return this.#contextResult(
             "\n\n<rita_file_context_error>\n" +
-            `RITA received uploaded file reference(s), but could not read or attach extracted content for: ${explicitContext.unavailable.join(", ")}.\n` +
-            'Do not generate a chart or report from missing data. Tell the user: "RITA could not read or attach the uploaded file properly. Please upload a clearer CSV, Excel, PDF, or Word file and try again."\n' +
-            "</rita_file_context_error>"
+              `RITA received uploaded file reference(s), but could not read or attach extracted content for: ${explicitContext.unavailable.join(", ")}.\n` +
+              'Do not generate a chart or report from missing data. Tell the user: "RITA could not read or attach the uploaded file properly. Please upload a clearer CSV, Excel, PDF, or Word file and try again."\n' +
+              "</rita_file_context_error>",
+            decision
           );
         }
 
@@ -902,9 +941,17 @@ class AgentHandler {
           this.log(
             `Injecting ${explicitContext.documents.length} explicit uploaded file(s) into user message`
           );
-          return this.#formatAttachedDocuments(
-            explicitContext.documents,
-            this.invocation.prompt
+          const decision = await this.#evaluateRitaContext({
+            documents: explicitContext.documents,
+            unavailable: explicitContext.unavailable,
+            requestedCount: explicitContext.requestedCount,
+          });
+          return this.#contextResult(
+            this.#formatAttachedDocuments(
+              explicitContext.documents,
+              this.invocation.prompt
+            ),
+            decision
           );
         }
 
@@ -937,7 +984,14 @@ class AgentHandler {
           })),
         ];
 
-        if (allDocuments.length === 0) return "";
+        if (allDocuments.length === 0) {
+          const decision = await this.#evaluateRitaContext({
+            documents: [],
+            unavailable: [],
+            requestedCount: 0,
+          });
+          return this.#contextResult("", decision);
+        }
         if (parsedFiles?.length > 0)
           this.log(
             `Injecting ${parsedFiles.length} parsed file(s) into user message`
@@ -947,9 +1001,14 @@ class AgentHandler {
             `Injecting ${pinnedDocs.length} pinned document(s) into user message`
           );
 
-        return this.#formatAttachedDocuments(
-          allDocuments,
-          this.invocation.prompt
+        const decision = await this.#evaluateRitaContext({
+          documents: allDocuments,
+          unavailable: [],
+          requestedCount: 0,
+        });
+        return this.#contextResult(
+          this.#formatAttachedDocuments(allDocuments, this.invocation.prompt),
+          decision
         );
       })
       .catch((e) => {

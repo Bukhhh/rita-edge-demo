@@ -16,6 +16,8 @@ const DEFAULT_RITA_CAPABILITIES = {
   report_builder: true,
   chart_generator: true,
   pdf_report_generator: true,
+  context_visibility: true,
+  strict_data_matching: true,
 };
 
 const DEFAULT_RITA_PROVIDER_CONTROLS = {
@@ -39,6 +41,16 @@ const RITA_CAPABILITY_LABELS = {
   pdf_report_generator: {
     title: "PDF Report Generator",
     description: "Allow RITA to prepare report outputs as PDF files.",
+  },
+  context_visibility: {
+    title: "Show Context Source",
+    description:
+      "Show users whether RITA is using uploaded files, workspace documents, typed data, or no context for a request.",
+  },
+  strict_data_matching: {
+    title: "Strict Data Matching",
+    description:
+      "Reject report or graph generation when the available data does not match the user's requested analysis.",
   },
 };
 
