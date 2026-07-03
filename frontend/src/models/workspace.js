@@ -126,6 +126,7 @@ const Workspace = {
     chatHandler,
     attachments = [],
     selectedRitaAgentId = null,
+    ritaContextSources = null,
   }) {
     if (!!threadSlug)
       return this.threads.streamChat(
@@ -133,14 +134,16 @@ const Workspace = {
         prompt,
         chatHandler,
         attachments,
-        selectedRitaAgentId
+        selectedRitaAgentId,
+        ritaContextSources
       );
     return this.streamChat(
       { slug: workspaceSlug },
       prompt,
       chatHandler,
       attachments,
-      selectedRitaAgentId
+      selectedRitaAgentId,
+      ritaContextSources
     );
   },
   streamChat: async function (
@@ -148,7 +151,8 @@ const Workspace = {
     message,
     handleChat,
     attachments = [],
-    selectedRitaAgentId = null
+    selectedRitaAgentId = null,
+    ritaContextSources = null
   ) {
     const ctrl = new AbortController();
 
@@ -167,6 +171,7 @@ const Workspace = {
         message,
         attachments,
         selectedRitaAgentId,
+        ritaContextSources,
       }),
       headers: baseHeaders(),
       signal: ctrl.signal,

@@ -14,6 +14,7 @@ const { SystemSettings } = require("../../models/systemSettings");
  */
 const invocationAttachmentsCache = new Map();
 const invocationRitaAgentsCache = new Map();
+const invocationRitaContextSourcesCache = new Map();
 
 /**
  * Store attachments for an invocation UUID
@@ -48,6 +49,18 @@ function getAndClearInvocationRitaAgent(uuid) {
   return agent;
 }
 
+function cacheInvocationRitaContextSources(uuid, ritaContextSources = null) {
+  if (!uuid || !Array.isArray(ritaContextSources)) return;
+  invocationRitaContextSourcesCache.set(uuid, ritaContextSources);
+}
+
+function getAndClearInvocationRitaContextSources(uuid) {
+  if (!invocationRitaContextSourcesCache.has(uuid)) return null;
+  const sources = invocationRitaContextSourcesCache.get(uuid) || [];
+  invocationRitaContextSourcesCache.delete(uuid);
+  return sources;
+}
+
 async function grepAgents({
   uuid,
   response,
@@ -57,6 +70,7 @@ async function grepAgents({
   thread = null,
   attachments = [],
   selectedRitaAgentId = null,
+  ritaContextSources = null,
 }) {
   let nativeToolingEnabled = false;
   const selectedRitaAgent =
@@ -109,6 +123,12 @@ async function grepAgents({
     // Cache attachments for the websocket handler to retrieve later
     cacheInvocationAttachments(newInvocation.uuid, attachments);
     cacheInvocationRitaAgent(newInvocation.uuid, selectedRitaAgent);
+    if (Array.isArray(ritaContextSources)) {
+      cacheInvocationRitaContextSources(
+        newInvocation.uuid,
+        ritaContextSources
+      );
+    }
 
     writeResponseChunk(response, {
       id: uuid,
@@ -145,4 +165,5 @@ module.exports = {
   grepAgents,
   getAndClearInvocationAttachments,
   getAndClearInvocationRitaAgent,
+  getAndClearInvocationRitaContextSources,
 };

@@ -30,6 +30,7 @@ function chatEndpoints(app) {
           message,
           attachments = [],
           selectedRitaAgentId = null,
+          ritaContextSources = null,
         } = reqBody(request);
         const workspace = response.locals.workspace;
 
@@ -71,7 +72,8 @@ function chatEndpoints(app) {
           user,
           null,
           attachments,
-          selectedRitaAgentId
+          selectedRitaAgentId,
+          ritaContextSources
         );
         await Telemetry.sendTelemetry("sent_chat", {
           multiUserMode: multiUserMode(response),
@@ -121,6 +123,7 @@ function chatEndpoints(app) {
           message,
           attachments = [],
           selectedRitaAgentId = null,
+          ritaContextSources = null,
         } = reqBody(request);
         const workspace = response.locals.workspace;
         const thread = response.locals.thread;
@@ -163,7 +166,8 @@ function chatEndpoints(app) {
           user,
           thread,
           attachments,
-          selectedRitaAgentId
+          selectedRitaAgentId,
+          ritaContextSources
         );
 
         // If thread was renamed emit event to frontend via special `action` response.

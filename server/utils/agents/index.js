@@ -24,6 +24,7 @@ const MCPCompatibilityLayer = require("../MCP");
 const {
   getAndClearInvocationAttachments,
   getAndClearInvocationRitaAgent,
+  getAndClearInvocationRitaContextSources,
 } = require("../chats/agents");
 const { DocumentManager } = require("../DocumentManager");
 
@@ -41,6 +42,7 @@ class AgentHandler {
   model = null;
   attachments = [];
   ritaAgent = null;
+  ritaContextSources = null;
 
   constructor({ uuid }) {
     this.#invocationUUID = uuid;
@@ -684,6 +686,9 @@ class AgentHandler {
     // Retrieve cached attachments (images, etc.) from the HTTP request
     this.attachments = getAndClearInvocationAttachments(this.#invocationUUID);
     this.ritaAgent = getAndClearInvocationRitaAgent(this.#invocationUUID);
+    this.ritaContextSources = getAndClearInvocationRitaContextSources(
+      this.#invocationUUID
+    );
 
     return this;
   }
@@ -778,6 +783,94 @@ class AgentHandler {
           tokenCountEstimate: doc.token_count_estimate,
         }),
       sourceId: doc.id || attachment?.document?.id || attachment?.name,
+    };
+  }
+
+  async #workspaceDocumentContext(docpath) {
+    const workspaceId = this.invocation.workspace.id;
+    const document = await Document.get({ docpath, workspaceId });
+    if (!document) return null;
+
+    const data = await fileData(docpath);
+    if (!data?.pageContent) return null;
+
+    const documentMetadata = safeJsonParse(document.metadata, {});
+    const filename = data.title || document.filename || "Workspace Document";
+
+    return {
+      name: filename,
+      content: data.pageContent,
+      profile:
+        data.ritaProfile ||
+        documentMetadata.ritaProfile ||
+        buildDocumentProfile({
+          filename,
+          content: data.pageContent,
+          metadata: data,
+          tokenCountEstimate: data.token_count_estimate,
+        }),
+      sourceId: docpath,
+    };
+  }
+
+  async #attachmentDocumentContext(attachment = {}, user = null) {
+    if (attachment.status === "failed") {
+      return {
+        document: null,
+        unavailable: attachment.name || "uploaded file",
+      };
+    }
+
+    let document = null;
+    if (attachment.status === "embedded") {
+      document = await this.#embeddedDocumentContext(attachment);
+    } else {
+      document = await this.#parsedAttachmentContext(attachment, user);
+    }
+
+    return {
+      document,
+      unavailable: document ? null : attachment.name || "uploaded file",
+    };
+  }
+
+  async #selectedRitaContext(user = null) {
+    const documents = [];
+    const unavailable = [];
+    let attachmentRequestCount = 0;
+
+    for (const source of this.ritaContextSources || []) {
+      if (source?.source === "workspace" && source?.docpath) {
+        const document = await this.#workspaceDocumentContext(source.docpath);
+        if (document) documents.push(document);
+        else {
+          unavailable.push(
+            String(source.docpath).split("/").pop() || source.docpath
+          );
+        }
+        continue;
+      }
+
+      if (source?.source === "attachment" && source?.uid) {
+        attachmentRequestCount += 1;
+        const attachment = (this.attachments || []).find(
+          (item) => item.uid === source.uid
+        );
+        if (!attachment) {
+          unavailable.push("uploaded file");
+          continue;
+        }
+
+        const result = await this.#attachmentDocumentContext(attachment, user);
+        if (result.document) documents.push(result.document);
+        else if (result.unavailable) unavailable.push(result.unavailable);
+      }
+    }
+
+    return {
+      documents,
+      unavailable,
+      requestedCount: attachmentRequestCount,
     };
   }
 
@@ -919,6 +1012,52 @@ class AgentHandler {
 
     return this.#explicitAttachmentContext(user)
       .then(async (explicitContext) => {
+        if (Array.isArray(this.ritaContextSources)) {
+          const selectedContext = await this.#selectedRitaContext(user);
+          if (
+            selectedContext.requestedCount > 0 &&
+            selectedContext.documents.length === 0
+          ) {
+            const decision = await this.#evaluateRitaContext({
+              documents: [],
+              unavailable: selectedContext.unavailable,
+              requestedCount: selectedContext.requestedCount,
+            });
+            return this.#contextResult(
+              "\n\n<rita_file_context_error>\n" +
+                `RITA received selected file reference(s), but could not read or attach extracted content for: ${selectedContext.unavailable.join(", ")}.\n` +
+                'Do not generate a chart or report from missing data. Tell the user: "RITA could not read or attach the selected file properly. Please choose a clearer CSV, Excel, PDF, or Word file and try again."\n' +
+                "</rita_file_context_error>",
+              decision
+            );
+          }
+
+          if (selectedContext.documents.length > 0) {
+            this.log(
+              `Injecting ${selectedContext.documents.length} user-selected RITA context source(s) into user message`
+            );
+            const decision = await this.#evaluateRitaContext({
+              documents: selectedContext.documents,
+              unavailable: selectedContext.unavailable,
+              requestedCount: selectedContext.requestedCount,
+            });
+            return this.#contextResult(
+              this.#formatAttachedDocuments(
+                selectedContext.documents,
+                this.invocation.prompt
+              ),
+              decision
+            );
+          }
+
+          const decision = await this.#evaluateRitaContext({
+            documents: [],
+            unavailable: selectedContext.unavailable,
+            requestedCount: selectedContext.requestedCount,
+          });
+          return this.#contextResult("", decision);
+        }
+
         if (
           explicitContext.requestedCount > 0 &&
           explicitContext.documents.length === 0

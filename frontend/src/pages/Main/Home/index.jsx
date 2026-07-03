@@ -201,7 +201,8 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
     message,
     attachments = [],
     displayText = null,
-    selectedRitaAgentId = null
+    selectedRitaAgentId = null,
+    ritaContextSources = null
   ) {
     if (!message || loading) return;
     setLoading(true);
@@ -233,6 +234,7 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
           displayText,
           attachments,
           selectedRitaAgentId,
+          ritaContextSources,
         })
       );
 
@@ -262,6 +264,7 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
     attachments = null,
     writeMode = "replace",
     selectedRitaAgentId = null,
+    ritaContextSources = null,
   }) {
     if (autoSubmit) {
       if (writeMode === "append") {
@@ -278,7 +281,8 @@ function HomeContent({ workspace, setWorkspace, threadSlug, setThreadSlug }) {
             ? requestAttachmentsFromFiles(files, parseAttachments)
             : parseAttachments(),
         displayText?.trim() || null,
-        selectedRitaAgentId
+        selectedRitaAgentId,
+        ritaContextSources
       );
       return;
     }

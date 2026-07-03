@@ -82,6 +82,8 @@ This note is for future Codex/RITA development continuity. Keep it updated when 
 - Added `Providers - Testing Only` in RITA Agents settings with a Groq testing-provider toggle.
 - Wired the Groq testing-provider toggle into system, workspace chat, and workspace agent provider selectors.
 - Allowed normal users to embed their own parsed chat uploads when context is too large, so uploaded data can still be processed by RITA.
+- Added RITA Report/Graph Builder data-source checkboxes so users can choose chat uploads and workspace documents explicitly.
+- Wired selected builder context sources through chat streaming and the agent runtime so workspace files are injected even when nothing is attached in chat.
 
 ## Important Paths
 
@@ -91,6 +93,8 @@ This note is for future Codex/RITA development continuity. Keep it updated when 
 - RITA Agents chat menu: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/ToolsMenu/Tabs/RitaAgents/index.jsx`
 - RITA Agent chat badge: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/index.jsx`
 - RITA Report/Graph Builder panels: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/index.jsx`
+- RITA builder data-source selector: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/RitaBuilderContextSelector.jsx`, `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/ritaBuilderContext.js`
+- RITA builder context source request/cache path: `frontend/src/models/workspace.js`, `server/utils/chats/agents.js`, `server/utils/agents/index.js`
 - Chat auto-submit attachment handling: `frontend/src/components/WorkspaceChat/ChatContainer/index.jsx`
 - RITA Agent image assets: `frontend/src/media/rita-agents/rita-report-agent.jpg`, `frontend/src/media/rita-agents/rita-graph-agent.jpg`
 - RITA Agent chat menu image display: `frontend/src/components/WorkspaceChat/ChatContainer/PromptInput/ToolsMenu/Tabs/RitaAgents/index.jsx`
@@ -158,4 +162,5 @@ This note is for future Codex/RITA development continuity. Keep it updated when 
 - No new dependency was added for the RITA Builder uploaded-document context fix.
 - No new dependency was added for the RITA Agent image/logo/chart-choice update.
 - No new dependency was added for report max-3 charts, testing provider controls, or normal-user parsed-file embedding.
+- No new dependency was added for the RITA builder data-source checkbox selector.
 - Rebuild Docker after frontend/backend changes to see them in the Docker-hosted app.

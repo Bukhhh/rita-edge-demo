@@ -32,6 +32,11 @@ import { useSearchParams } from "react-router-dom";
 import { useIsAgentSessionActive } from "@/utils/chat/agent";
 import RitaGraphAgentImage from "@/media/rita-agents/rita-graph-agent.jpg";
 import RitaReportAgentImage from "@/media/rita-agents/rita-report-agent.jpg";
+import RitaBuilderContextSelector, {
+  buildRitaContextSources,
+  getRitaBuilderContextState,
+  useRitaBuilderContextSelection,
+} from "./RitaBuilderContextSelector";
 
 export const PROMPT_INPUT_ID = "primary-prompt-input";
 export const PROMPT_INPUT_EVENT = "set_prompt_input";
@@ -385,16 +390,20 @@ export default function PromptInput({
               centered={centered}
               highlightedIndexRef={toolsHighlightRef}
             />
-            <RitaAgentBuilderPanel
-              agent={selectedRitaAgent}
-              promptInput={promptInput}
-              setPromptInput={setPromptInput}
-              attachments={attachments}
-              sendCommand={sendCommand}
-              textareaRef={textareaRef}
-              onDisconnect={disconnectRitaAgent}
-              disabled={isStreaming || isDisabled}
-            />
+            <div className="absolute bottom-full left-0 right-0 z-20 mb-2">
+              <RitaAgentBuilderPanel
+                agent={selectedRitaAgent}
+                centered={centered}
+                workspace={workspace}
+                promptInput={promptInput}
+                setPromptInput={setPromptInput}
+                attachments={attachments}
+                sendCommand={sendCommand}
+                textareaRef={textareaRef}
+                onDisconnect={disconnectRitaAgent}
+                disabled={isStreaming || isDisabled}
+              />
+            </div>
             <div className="bg-zinc-800 light:bg-white light:border light:border-slate-300 rounded-[20px] pwa:rounded-3xl flex flex-col px-5 overflow-hidden">
               <AttachmentManager attachments={attachments} />
               <div className="flex items-center">
@@ -508,6 +517,8 @@ const GRAPH_CHART_OPTIONS = [
 
 function RitaAgentBuilderPanel({
   agent = null,
+  centered = false,
+  workspace = {},
   promptInput = "",
   setPromptInput,
   attachments = [],
@@ -540,6 +551,8 @@ function RitaAgentBuilderPanel({
   if (agent.id === "rita-report-agent") {
     return (
       <ReportAgentBuilder
+        centered={centered}
+        workspace={workspace}
         promptInput={promptInput}
         setPromptInput={setPromptInput}
         attachments={attachments}
@@ -554,6 +567,8 @@ function RitaAgentBuilderPanel({
   if (agent.id === "rita-graph-agent") {
     return (
       <GraphAgentBuilder
+        centered={centered}
+        workspace={workspace}
         promptInput={promptInput}
         setPromptInput={setPromptInput}
         attachments={attachments}
@@ -569,6 +584,8 @@ function RitaAgentBuilderPanel({
 }
 
 function ReportAgentBuilder({
+  centered = false,
+  workspace = {},
   promptInput,
   setPromptInput,
   attachments = [],
@@ -585,7 +602,14 @@ function ReportAgentBuilder({
   const [output, setOutput] = useState("pdf");
   const [builderError, setBuilderError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const contextState = getRitaBuilderContextState(attachments, promptInput);
+  const { selectedSourceKeys, setSelectedSourceKeys } =
+    useRitaBuilderContextSelection();
+  const contextState = getRitaBuilderContextState({
+    attachments,
+    promptInput,
+    workspace,
+    selectedSourceKeys,
+  });
   const generateDisabled =
     disabled || isSubmitting || Boolean(contextState.blocker);
 
@@ -629,16 +653,19 @@ function ReportAgentBuilder({
     setBuilderError(null);
     setIsSubmitting(true);
     const extra = promptInput.trim();
+    const selectedSources = buildRitaContextSources(selectedSourceKeys);
     const prompt = buildReportAgentPrompt({
       analysis: [...analysis],
       chartTypes: [...chartTypes],
       output,
       extra,
+      selectedSources: contextState.selectedSources,
     });
     sendCommand({
       text: prompt,
       displayText: `Generate ${output.toUpperCase()} report with ${[...chartTypes].length} chart option(s): ${[...analysis].join(", ")}`,
       selectedRitaAgentId: "rita-report-agent",
+      ritaContextSources: selectedSources,
       autoSubmit: true,
     });
     setPromptInput("");
@@ -647,14 +674,43 @@ function ReportAgentBuilder({
   }
 
   return (
-    <BuilderPanel title="RITA Report Builder" onClose={onDisconnect}>
-      <BuilderHint>
-        Upload your PDF/document using the attach button, choose the report
-        options, then add extra notes in chat if needed.
-      </BuilderHint>
-      <BuilderContextStatus state={contextState} />
+    <BuilderPanel
+      title="RITA Report Builder"
+      onClose={onDisconnect}
+      compactViewport={centered}
+      footer={
+        <>
+          {builderError && <BuilderError>{builderError}</BuilderError>}
+          <button
+            type="button"
+            onClick={generateReport}
+            disabled={generateDisabled}
+            className={`w-full rounded-md text-xs font-semibold px-3 py-2 transition-colors ${
+              generateDisabled
+                ? "cursor-not-allowed bg-zinc-700 light:bg-slate-300 text-zinc-400 light:text-slate-500"
+                : "bg-white hover:bg-zinc-200 light:bg-slate-800 light:hover:bg-slate-700 text-zinc-900 light:text-white"
+            }`}
+          >
+            {builderButtonLabel({
+              disabled,
+              isSubmitting,
+              contextState,
+              readyLabel: "Generate Report",
+            })}
+          </button>
+        </>
+      }
+    >
+      <RitaBuilderContextSelector
+        attachments={attachments}
+        workspace={workspace}
+        promptInput={promptInput}
+        selectedSourceKeys={selectedSourceKeys}
+        onSelectedSourceKeysChange={setSelectedSourceKeys}
+        compact
+      />
       <BuilderSection label="Report focus">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1">
           {ANALYSIS_OPTIONS.map((option) => (
             <BuilderChip
               key={option}
@@ -666,7 +722,7 @@ function ReportAgentBuilder({
           ))}
         </div>
       </BuilderSection>
-      <BuilderSection label={`Charts: choose up to ${REPORT_MAX_CHARTS}`}>
+      <BuilderSection label={`Charts (${chartTypes.size}/${REPORT_MAX_CHARTS})`}>
         <IconOptionGrid>
           {REPORT_CHART_OPTIONS.map((option) => (
             <IconOption
@@ -682,13 +738,9 @@ function ReportAgentBuilder({
             />
           ))}
         </IconOptionGrid>
-        <p className="text-[10px] text-zinc-500 light:text-slate-500">
-          Selected {chartTypes.size}/{REPORT_MAX_CHARTS}. The report can include
-          up to three charts.
-        </p>
       </BuilderSection>
       <BuilderSection label="Output">
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-1">
           <OutputOption
             label="PDF"
             icon={FilePdf}
@@ -709,29 +761,13 @@ function ReportAgentBuilder({
           />
         </div>
       </BuilderSection>
-      {builderError && <BuilderError>{builderError}</BuilderError>}
-      <button
-        type="button"
-        onClick={generateReport}
-        disabled={generateDisabled}
-        className={`w-full rounded-md text-xs font-semibold px-3 py-2 transition-colors ${
-          generateDisabled
-            ? "cursor-not-allowed bg-zinc-700 light:bg-slate-300 text-zinc-400 light:text-slate-500"
-            : "bg-white hover:bg-zinc-200 light:bg-slate-800 light:hover:bg-slate-700 text-zinc-900 light:text-white"
-        }`}
-      >
-        {builderButtonLabel({
-          disabled,
-          isSubmitting,
-          contextState,
-          readyLabel: "Generate Report",
-        })}
-      </button>
     </BuilderPanel>
   );
 }
 
 function GraphAgentBuilder({
+  centered = false,
+  workspace = {},
   promptInput,
   setPromptInput,
   attachments = [],
@@ -748,7 +784,14 @@ function GraphAgentBuilder({
   const [output, setOutput] = useState("png");
   const [builderError, setBuilderError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const contextState = getRitaBuilderContextState(attachments, promptInput);
+  const { selectedSourceKeys, setSelectedSourceKeys } =
+    useRitaBuilderContextSelection();
+  const contextState = getRitaBuilderContextState({
+    attachments,
+    promptInput,
+    workspace,
+    selectedSourceKeys,
+  });
   const generateDisabled =
     disabled || isSubmitting || Boolean(contextState.blocker);
 
@@ -760,16 +803,19 @@ function GraphAgentBuilder({
     setBuilderError(null);
     setIsSubmitting(true);
     const extra = promptInput.trim();
+    const selectedSources = buildRitaContextSources(selectedSourceKeys);
     const prompt = buildGraphAgentPrompt({
       focus,
       chartType,
       output,
       extra,
+      selectedSources: contextState.selectedSources,
     });
     sendCommand({
       text: prompt,
       displayText: `Generate one ${chartType.replace("auto choose the best single chart", "auto-selected chart")} as ${output.toUpperCase()}`,
       selectedRitaAgentId: "rita-graph-agent",
+      ritaContextSources: selectedSources,
       autoSubmit: true,
     });
     setPromptInput("");
@@ -778,19 +824,48 @@ function GraphAgentBuilder({
   }
 
   return (
-    <BuilderPanel title="RITA Graph Builder" onClose={onDisconnect}>
-      <BuilderHint>
-        Graph Agent creates exactly one graph. Upload a document or describe the
-        data in chat, then choose the chart and output.
-      </BuilderHint>
-      <BuilderContextStatus state={contextState} />
+    <BuilderPanel
+      title="RITA Graph Builder"
+      onClose={onDisconnect}
+      compactViewport={centered}
+      footer={
+        <>
+          {builderError && <BuilderError>{builderError}</BuilderError>}
+          <button
+            type="button"
+            onClick={generateGraph}
+            disabled={generateDisabled}
+            className={`w-full rounded-md text-xs font-semibold px-3 py-2 transition-colors ${
+              generateDisabled
+                ? "cursor-not-allowed bg-zinc-700 light:bg-slate-300 text-zinc-400 light:text-slate-500"
+                : "bg-white hover:bg-zinc-200 light:bg-slate-800 light:hover:bg-slate-700 text-zinc-900 light:text-white"
+            }`}
+          >
+            {builderButtonLabel({
+              disabled,
+              isSubmitting,
+              contextState,
+              readyLabel: "Generate One Graph",
+            })}
+          </button>
+        </>
+      }
+    >
+      <RitaBuilderContextSelector
+        attachments={attachments}
+        workspace={workspace}
+        promptInput={promptInput}
+        selectedSourceKeys={selectedSourceKeys}
+        onSelectedSourceKeysChange={setSelectedSourceKeys}
+        compact
+      />
       <BuilderSection label="Data to analyse">
         <input
           type="text"
           value={focus}
           onChange={(e) => setFocus(e.target.value)}
-          placeholder="Example: monthly sales, parliament seats, revenue by state"
-          className="w-full rounded-md border border-zinc-700 light:border-slate-300 bg-zinc-900 light:bg-white px-2 py-2 text-xs text-white light:text-slate-900 placeholder:text-zinc-500"
+          placeholder="Example: monthly sales, revenue by state"
+          className="w-full rounded-md border border-zinc-700 light:border-slate-300 bg-zinc-900 light:bg-white px-2 py-1.5 text-xs text-white light:text-slate-900 placeholder:text-zinc-500"
         />
       </BuilderSection>
       <BuilderSection label="One graph only">
@@ -806,7 +881,7 @@ function GraphAgentBuilder({
         </IconOptionGrid>
       </BuilderSection>
       <BuilderSection label="Output">
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 gap-1">
           <OutputOption
             label="PNG"
             icon={ImageSquare}
@@ -821,29 +896,20 @@ function GraphAgentBuilder({
           />
         </div>
       </BuilderSection>
-      {builderError && <BuilderError>{builderError}</BuilderError>}
-      <button
-        type="button"
-        onClick={generateGraph}
-        disabled={generateDisabled}
-        className={`w-full rounded-md text-xs font-semibold px-3 py-2 transition-colors ${
-          generateDisabled
-            ? "cursor-not-allowed bg-zinc-700 light:bg-slate-300 text-zinc-400 light:text-slate-500"
-            : "bg-white hover:bg-zinc-200 light:bg-slate-800 light:hover:bg-slate-700 text-zinc-900 light:text-white"
-        }`}
-      >
-        {builderButtonLabel({
-          disabled,
-          isSubmitting,
-          contextState,
-          readyLabel: "Generate One Graph",
-        })}
-      </button>
     </BuilderPanel>
   );
 }
 
-function buildReportAgentPrompt({ analysis, chartTypes, output, extra }) {
+function buildReportAgentPrompt({
+  analysis,
+  chartTypes,
+  output,
+  extra,
+  selectedSources = [],
+}) {
+  const selectedSourceNames = selectedSources
+    .map((source) => source.label)
+    .filter(Boolean);
   const outputInstructions = {
     pdf: "Create a polished PDF report by calling create-chart-pdf-report. Do not only describe the report plan.",
     docx: "Create a polished DOCX report using the document creation tool. Do not only describe the report plan.",
@@ -854,9 +920,11 @@ function buildReportAgentPrompt({ analysis, chartTypes, output, extra }) {
   return [
     "RITA Report Builder request.",
     "This is an execution request, not a planning request.",
-    "Use the uploaded/attached document, parsed file context, or workspace context.",
-    "If <attached_documents> context is present in the conversation, treat it as the uploaded source data and do not ask the user to upload again.",
-    "If the user recently embedded a file into the workspace, use RAG/long-term memory or workspace context before asking them to upload again.",
+    "Use only the user-selected data sources injected in <attached_documents>.",
+    selectedSourceNames.length > 0
+      ? `Selected data sources: ${selectedSourceNames.join(", ")}.`
+      : null,
+    "If <attached_documents> context is present in the conversation, treat it as the selected source data and do not ask the user to upload again.",
     `Analyse: ${analysis.join(", ")}.`,
     `Preferred charts: ${chartTypes.join(", ")}.`,
     "Generate up to three charts in the report. Each chart should cover a different useful angle and should not duplicate the same insight.",
@@ -873,12 +941,24 @@ function buildReportAgentPrompt({ analysis, chartTypes, output, extra }) {
     .join("\n");
 }
 
-function buildGraphAgentPrompt({ focus, chartType, output, extra }) {
+function buildGraphAgentPrompt({
+  focus,
+  chartType,
+  output,
+  extra,
+  selectedSources = [],
+}) {
+  const selectedSourceNames = selectedSources
+    .map((source) => source.label)
+    .filter(Boolean);
+
   return [
     "RITA Graph Builder request.",
-    "Use the uploaded/attached document, parsed file context, workspace context, or user-provided data.",
-    "If <attached_documents> context is present in the conversation, treat it as the uploaded source data and do not ask the user to upload again.",
-    "If the user recently embedded a file into the workspace, use RAG/long-term memory or workspace context before asking them to upload again.",
+    "Use only the user-selected data sources injected in <attached_documents>, or user-provided data typed in chat.",
+    selectedSourceNames.length > 0
+      ? `Selected data sources: ${selectedSourceNames.join(", ")}.`
+      : null,
+    "If <attached_documents> context is present in the conversation, treat it as the selected source data and do not ask the user to upload again.",
     "Create exactly one graph only. Do not create multiple charts.",
     `Data/focus to analyse: ${focus}.`,
     `Chart type: ${chartType}.`,
@@ -895,14 +975,22 @@ function buildGraphAgentPrompt({ focus, chartType, output, extra }) {
     .join("\n");
 }
 
-function BuilderPanel({ title, onClose, children }) {
+function BuilderPanel({
+  title,
+  onClose,
+  children,
+  footer = null,
+  compactViewport = false,
+}) {
   return (
-    <div className="mb-2 rounded-xl border border-white/10 light:border-slate-300 bg-zinc-900 light:bg-slate-50 p-3 shadow-lg">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-white light:text-slate-900">
+    <div
+      className={`flex ${compactViewport ? "max-h-[min(32dvh,18rem)]" : "max-h-[min(52dvh,22rem)] sm:max-h-[min(58dvh,26rem)]"} flex-col overflow-hidden rounded-xl border border-white/10 light:border-slate-300 bg-zinc-900 light:bg-slate-50 shadow-lg`}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 light:border-slate-200 px-3 py-2">
+        <p className="text-sm font-semibold text-white light:text-slate-900 truncate">
           {title}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <span className="text-[10px] text-green-300 light:text-green-700">
             Connected
           </span>
@@ -917,16 +1005,15 @@ function BuilderPanel({ title, onClose, children }) {
           </button>
         </div>
       </div>
-      <div className="mt-3 flex flex-col gap-3">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2 flex flex-col gap-2">
+        {children}
+      </div>
+      {footer && (
+        <div className="shrink-0 border-t border-white/10 light:border-slate-200 px-3 py-2 flex flex-col gap-2 bg-zinc-900 light:bg-slate-50">
+          {footer}
+        </div>
+      )}
     </div>
-  );
-}
-
-function BuilderHint({ children }) {
-  return (
-    <p className="text-[11px] leading-relaxed text-zinc-400 light:text-slate-600">
-      {children}
-    </p>
   );
 }
 
@@ -938,31 +1025,9 @@ function BuilderError({ children }) {
   );
 }
 
-function BuilderContextStatus({ state }) {
-  const classes = {
-    ready:
-      "border-green-400/30 bg-green-500/10 text-green-200 light:text-green-700 light:bg-green-50 light:border-green-200",
-    working:
-      "border-amber-400/30 bg-amber-500/10 text-amber-100 light:text-amber-700 light:bg-amber-50 light:border-amber-200",
-    blocked:
-      "border-red-400/30 bg-red-500/10 text-red-200 light:text-red-700 light:bg-red-50 light:border-red-200",
-    neutral:
-      "border-zinc-700 bg-zinc-800/60 text-zinc-300 light:border-slate-300 light:bg-slate-100 light:text-slate-700",
-  };
-
-  return (
-    <div
-      className={`rounded-md border px-3 py-2 text-[11px] leading-relaxed ${classes[state.tone] || classes.neutral}`}
-    >
-      <div className="font-semibold">{state.title}</div>
-      <div>{state.message}</div>
-    </div>
-  );
-}
-
 function BuilderSection({ label, children }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1">
       <p className="text-[10px] uppercase tracking-wide font-semibold text-zinc-500 light:text-slate-500">
         {label}
       </p>
@@ -976,7 +1041,7 @@ function BuilderChip({ active, onClick, children }) {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-2.5 py-1 border text-[11px] transition-colors ${
+      className={`rounded-full px-2 py-0.5 border text-[10px] transition-colors ${
         active
           ? "border-blue-400 bg-blue-500/10 text-blue-100 light:bg-blue-50 light:text-blue-800"
           : "border-zinc-700 light:border-slate-300 text-zinc-300 light:text-slate-700 hover:bg-zinc-700/50 light:hover:bg-slate-100"
@@ -989,7 +1054,7 @@ function BuilderChip({ active, onClick, children }) {
 
 function IconOptionGrid({ children }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">{children}</div>
+    <div className="grid grid-cols-3 sm:grid-cols-4 gap-1">{children}</div>
   );
 }
 
@@ -1006,10 +1071,10 @@ function IconOption({ option, active, disabled = false, onClick }) {
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-md border px-2 py-2 flex items-center gap-1.5 text-left transition-colors ${stateClass}`}
+      className={`rounded-md border px-1.5 py-1 flex items-center gap-1 text-left transition-colors ${stateClass}`}
     >
-      <Icon size={16} className="text-white light:text-slate-700 shrink-0" />
-      <span className="text-[11px] text-white light:text-slate-800 truncate">
+      <Icon size={14} className="text-white light:text-slate-700 shrink-0" />
+      <span className="text-[10px] text-white light:text-slate-800 truncate">
         {option.label}
       </span>
     </button>
@@ -1021,7 +1086,7 @@ function OutputOption({ label, icon: Icon, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md border px-2 py-2 flex items-center justify-center gap-1.5 transition-colors ${
+      className={`rounded-md border px-1.5 py-1 flex items-center justify-center gap-1 transition-colors ${
         active
           ? "border-blue-400 bg-blue-500/10 light:bg-blue-50"
           : "border-zinc-700 light:border-slate-300 hover:bg-zinc-700/50 light:hover:bg-slate-100"
@@ -1207,85 +1272,6 @@ function useIsDisabled(attachments = []) {
   );
 
   return { isDisabled };
-}
-
-function getRitaBuilderContextState(attachments = [], promptInput = "") {
-  const documentAttachments = attachments.filter(
-    (attachment) => attachment.type === "upload"
-  );
-  const typedContext = promptInput.trim().length > 0;
-
-  if (!documentAttachments.length) {
-    return typedContext
-      ? {
-          tone: "ready",
-          title: "Context ready",
-          message:
-            "RITA will use your typed instructions as the source context for this request.",
-          blocker: null,
-        }
-      : {
-          tone: "neutral",
-          title: "No file attached",
-          message:
-            "RITA can still use workspace knowledge if available, or you can attach a PDF, CSV, Excel, or Word file first.",
-          blocker: null,
-        };
-  }
-
-  const processing = documentAttachments.find(
-    (attachment) => attachment.status === "in_progress"
-  );
-  if (processing) {
-    const fileName = processing.file?.name || processing.name || "your file";
-    return {
-      tone: "working",
-      title: "Preparing file context",
-      message: `RITA is still reading "${fileName}". Generate will unlock when the file is ready.`,
-      blocker: `RITA is still preparing "${fileName}". Please wait a moment before generating.`,
-    };
-  }
-
-  const failed = documentAttachments.find(
-    (attachment) => attachment.status === "failed"
-  );
-  if (failed) {
-    const fileName = failed.file?.name || failed.name || "this file";
-    return {
-      tone: "blocked",
-      title: "File cannot be used",
-      message: `RITA could not read "${fileName}" properly. Upload a clearer PDF, CSV, Excel, or Word file.`,
-      blocker: `RITA could not read "${fileName}" properly. Please upload a clearer PDF, CSV, Excel, or Word file.`,
-    };
-  }
-
-  const readyFiles = documentAttachments.filter((attachment) =>
-    ["added_context", "embedded", "success"].includes(attachment.status)
-  );
-  if (readyFiles.length === documentAttachments.length) {
-    const names = readyFiles
-      .map((attachment) => attachment.file?.name || attachment.name)
-      .filter(Boolean)
-      .slice(0, 2)
-      .join(", ");
-    return {
-      tone: "ready",
-      title: "Context ready",
-      message:
-        readyFiles.length === 1
-          ? `RITA can use ${names || "the attached file"} as reference for this request.`
-          : `RITA can use ${readyFiles.length} attached files as references for this request.`,
-      blocker: null,
-    };
-  }
-
-  return {
-    tone: "working",
-    title: "Checking file context",
-    message: "RITA is checking whether the attached files can be used.",
-    blocker:
-      "RITA is still checking the attached files. Please wait a moment before generating.",
-  };
 }
 
 function builderButtonLabel({

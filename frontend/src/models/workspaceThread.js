@@ -92,7 +92,8 @@ const WorkspaceThread = {
     message,
     handleChat,
     attachments = [],
-    selectedRitaAgentId = null
+    selectedRitaAgentId = null,
+    ritaContextSources = null
   ) {
     const ctrl = new AbortController();
 
@@ -113,6 +114,7 @@ const WorkspaceThread = {
           message,
           attachments,
           selectedRitaAgentId,
+          ritaContextSources,
         }),
         headers: baseHeaders(),
         signal: ctrl.signal,

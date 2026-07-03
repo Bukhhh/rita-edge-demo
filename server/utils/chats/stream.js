@@ -23,7 +23,8 @@ async function streamChatWithWorkspace(
   user = null,
   thread = null,
   attachments = [],
-  selectedRitaAgentId = null
+  selectedRitaAgentId = null,
+  ritaContextSources = null
 ) {
   const uuid = uuidv4();
   const updatedMessage = await grepCommand(message, user);
@@ -50,6 +51,7 @@ async function streamChatWithWorkspace(
     thread,
     attachments,
     selectedRitaAgentId,
+    ritaContextSources,
   });
   if (isAgentChat) return;
 

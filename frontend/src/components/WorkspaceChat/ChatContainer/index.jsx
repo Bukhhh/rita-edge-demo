@@ -181,6 +181,7 @@ export default function ChatContainer({
    * @param {Object[]} options.history - The history of the chat prior to this message for overriding the current chat history
    * @param {Object[import("./DnDWrapper").Attachment]} options.attachments - The attachments to send to the LLM for this message
    * @param {string|null} options.selectedRitaAgentId - Explicit RITA agent id for builder/agent requests only
+   * @param {Object[]} [options.ritaContextSources] - Selected RITA builder context sources
    * @param {'replace' | 'append' | 'prepend'} options.writeMode - Replace current text or append to existing text (default: replace)
    * @returns {void}
    */
@@ -192,6 +193,7 @@ export default function ChatContainer({
     writeMode = "replace",
     displayText = null,
     selectedRitaAgentId = null,
+    ritaContextSources = null,
   } = {}) => {
     // If we are not auto-submitting, we can just emit the text to the prompt input.
     if (!autoSubmit) {
@@ -243,6 +245,7 @@ export default function ChatContainer({
         attachments: visibleAttachments,
         promptAttachments,
         selectedRitaAgentId,
+        ritaContextSources,
         animate: true,
       };
       prevChatHistory = [...history, pendingAssistantMessage];
@@ -260,6 +263,7 @@ export default function ChatContainer({
         attachments: visibleAttachments,
         promptAttachments,
         selectedRitaAgentId,
+        ritaContextSources,
         animate: true,
       };
       prevChatHistory = [
@@ -296,6 +300,7 @@ export default function ChatContainer({
           attachments: pending.attachments || [],
           displayText: pending.displayText || null,
           selectedRitaAgentId: pending.selectedRitaAgentId || null,
+          ritaContextSources: pending.ritaContextSources ?? null,
           autoSubmit: true,
         });
       }, 100);
@@ -393,6 +398,7 @@ export default function ChatContainer({
         },
         attachments,
         selectedRitaAgentId: promptMessage?.selectedRitaAgentId || null,
+        ritaContextSources: promptMessage?.ritaContextSources ?? null,
       });
       return;
     }
